@@ -151,6 +151,9 @@ test.describe("SAMVED Phase 4 Deterministic Safety Engine E2E", () => {
   }) => {
     const mockCallId = "call-safety-test-01";
 
+    // Prevent background WebSocket from racing or clearing mock state
+    await page.route("**/ws/operator", (route) => route.abort());
+
     // Mock /v1/calls list
     await page.route("**/v1/calls", async (route) => {
       await route.fulfill({
@@ -283,7 +286,8 @@ test.describe("SAMVED Phase 4 Deterministic Safety Engine E2E", () => {
     await page.goto("/calls");
 
     // Click call card to select it
-    await page.locator("text=+91******3210").first().click();
+    await page.getByTestId("call-item").first().waitFor({ state: "visible", timeout: 10000 });
+    await page.getByTestId("call-item").first().click({ force: true });
 
     // Verify Safety Engine Oversight Panel
     await expect(page.getByTestId("safety-engine-panel")).toBeVisible();

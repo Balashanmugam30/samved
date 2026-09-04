@@ -335,7 +335,12 @@ export default function OperatorCallsPage() {
           safety_flag: t.safety_flag,
           timestamp: t.timestamp || new Date().toISOString(),
         }));
-        setTranscripts(remoteTurns);
+        setTranscripts((prev) => {
+          if (prev.length > 0 && remoteTurns.length === 0) {
+            return prev;
+          }
+          return remoteTurns;
+        });
       }
     },
     onEvent: (envelope: EventEnvelope) => {
@@ -643,7 +648,10 @@ export default function OperatorCallsPage() {
           safety_flag: u.safety_flag,
           timestamp: u.timestamp || u.created_at || new Date().toISOString(),
         }));
-        setTranscripts(formatted);
+        setTranscripts((prev) => {
+          if (prev.length > 0 && formatted.length === 0) return prev;
+          return formatted;
+        });
       } else {
         setTranscripts([]);
       }
@@ -658,7 +666,21 @@ export default function OperatorCallsPage() {
       if (sRes.ok) {
         const sData = await sRes.json();
         setSafetyState(sData.safety_state || "NONE");
-        setSafetySignals(sData.safety_signals || []);
+        setSafetySignals((prev) => {
+          const serverSignals = sData.safety_signals || [];
+          return serverSignals.map((ss: any) => {
+            const existing = prev.find((p) => p.signal_id === ss.signal_id);
+            if (existing && existing.acknowledged) {
+              return {
+                ...ss,
+                acknowledged: true,
+                acknowledged_at: existing.acknowledged_at,
+                acknowledged_by: existing.acknowledged_by,
+              };
+            }
+            return ss;
+          });
+        });
       } else {
         setSafetyState("NONE");
         setSafetySignals([]);

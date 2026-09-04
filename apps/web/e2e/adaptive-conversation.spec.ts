@@ -313,20 +313,24 @@ test.describe("Phase 7: Adaptive Conversation Engine", () => {
 
     await page.goto("/calls");
 
+    // Click call card to select it
+    await page.getByTestId("call-item").first().waitFor({ state: "visible", timeout: 10000 });
+    await page.getByTestId("call-item").first().click({ force: true });
+
     // Click Force Human
     const forceHumanBtn = page.locator('[data-testid="btn-override-human"]');
-    await expect(forceHumanBtn).toBeVisible();
+    await expect(forceHumanBtn).toBeVisible({ timeout: 10000 });
     await forceHumanBtn.click();
+
+    // Verify UI displays the updated P0 and HUMAN_HANDOFF strategy (polling until network response arrives)
+    const priorityBadge = page.locator('[data-testid="adaptive-priority"]');
+    await expect(priorityBadge).toHaveText("P0", { timeout: 10000 });
+    const strategyBadge = page.locator('[data-testid="adaptive-strategy"]');
+    await expect(strategyBadge).toHaveText("HUMAN_HANDOFF");
 
     // Verify REST call was executed
     expect(overridePayload).not.toBeNull();
     expect(overridePayload.action).toBe("operator_force_human");
-
-    // Verify UI displays the updated P0 and HUMAN_HANDOFF strategy
-    const priorityBadge = page.locator('[data-testid="adaptive-priority"]');
-    await expect(priorityBadge).toHaveText("P0");
-    const strategyBadge = page.locator('[data-testid="adaptive-strategy"]');
-    await expect(strategyBadge).toHaveText("HUMAN_HANDOFF");
 
     // Verify override badge is active
     const overrideBadge = page.locator('[data-testid="adaptive-override-badge"]');

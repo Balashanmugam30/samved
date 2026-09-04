@@ -75,6 +75,10 @@ class TelephonySession:
         self.svi_history: List[Dict[str, Any]] = []
         self.latest_svi: Optional[Dict[str, Any]] = None
 
+        # Phase 6 Deterministic Acoustic Assessments
+        self.acoustic_history: List[Dict[str, Any]] = []
+        self.latest_acoustic: Optional[Dict[str, Any]] = None
+
         # Metrics and sequence validation
         self.last_sequence_number: int = 0
         self.inbound_frames_count: int = 0
@@ -110,6 +114,10 @@ class TelephonySession:
                     svi_payload = dumped.get("payload", {})
                     self.latest_svi = svi_payload
                     self.svi_history.append(svi_payload)
+                elif "ACOUSTIC_UPDATE" in ev_type_str:
+                    ac_payload = dumped.get("payload", {})
+                    self.latest_acoustic = ac_payload
+                    self.acoustic_history.append(ac_payload)
         except Exception as e:
             logger.error(f"Error recording event in session {self.session_id}: {e}")
 
@@ -126,6 +134,20 @@ class TelephonySession:
     def get_svi_history(self) -> List[Dict[str, Any]]:
         """Returns complete SVI assessment history list."""
         return list(self.svi_history)
+
+    def record_acoustic_assessment(self, assessment: Any) -> None:
+        """Stores Acoustic assessment in session history."""
+        dumped = assessment.model_dump() if hasattr(assessment, "model_dump") else assessment
+        self.latest_acoustic = dumped
+        self.acoustic_history.append(dumped)
+
+    def get_latest_acoustic(self) -> Optional[Dict[str, Any]]:
+        """Returns latest acoustic assessment dictionary."""
+        return self.latest_acoustic
+
+    def get_acoustic_history(self) -> List[Dict[str, Any]]:
+        """Returns complete acoustic assessment history list."""
+        return list(self.acoustic_history)
 
     def acknowledge_signal(self, signal_id: str, acknowledged_by: str = "operator") -> Optional[Dict[str, Any]]:
         """Records operator acknowledgment on an active safety signal."""
@@ -182,6 +204,10 @@ class TelephonySession:
         latest_svi_score = self.latest_svi.get("score") if self.latest_svi else None
         latest_svi_band = self.latest_svi.get("band") if self.latest_svi else "LOW"
 
+        latest_acoustic_quality = self.latest_acoustic.get("quality") if self.latest_acoustic else "GOOD"
+        latest_acoustic_confidence = self.latest_acoustic.get("confidence") if self.latest_acoustic else 1.0
+        latest_acoustic_signals_count = len(self.latest_acoustic.get("signals", [])) if self.latest_acoustic else 0
+
         return {
             "session_id": self.session_id,
             "call_id": self.call_id,
@@ -202,6 +228,10 @@ class TelephonySession:
             "svi_score": latest_svi_score,
             "svi_band": latest_svi_band,
             "latest_svi": self.latest_svi,
+            "acoustic_quality": latest_acoustic_quality,
+            "acoustic_confidence": latest_acoustic_confidence,
+            "acoustic_signals_count": latest_acoustic_signals_count,
+            "latest_acoustic": self.latest_acoustic,
             "utterances_count": len(utts),
             "events_count": len(self.event_history),
             "is_active": self.state_machine.is_active,
@@ -237,6 +267,17 @@ class TelephonySession:
         # Feed frame to attached orchestrator for STT & voice activity detection
         if self.orchestrator:
             self.orchestrator.on_inbound_audio_frame(frame)
+
+        # Feed frame to acoustic engine for realtime acoustic analysis (Phase 6)
+        try:
+            from app.services.acoustic_engine import acoustic_engine
+            acoustic_engine.ingest_frame(
+                session_id=self.session_id,
+                call_id=self.call_id,
+                frame_bytes=frame.get_raw_bytes(),
+            )
+        except Exception as e:
+            logger.debug(f"Acoustic frame ingestion error: {e}")
 
         # Broadcast frame to attached consumers
         for consumer in list(self.frame_consumers):
@@ -441,6 +482,8 @@ class RealtimeSessionManager:
             summary["safety_state"] = session.saved_safety_state
             summary["latest_svi"] = session.get_latest_svi()
             summary["svi_history"] = session.get_svi_history()
+            summary["latest_acoustic"] = session.get_latest_acoustic()
+            summary["acoustic_history"] = session.get_acoustic_history()
             self._recent_sessions.appendleft(summary)
             self._recent_calls_map[session.call_id] = summary
             if len(self._recent_calls_map) > 100:
@@ -557,6 +600,38 @@ class RealtimeSessionManager:
         if call_id in self._recent_calls_map:
             c = self._recent_calls_map[call_id]
             return c.get("svi_history", [])
+        return None
+
+    async def get_call_acoustic(self, call_id: str) -> Optional[Dict[str, Any]]:
+        """Returns latest Acoustic assessment for active or completed call."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            latest = sess.get_latest_acoustic()
+            if not latest:
+                from app.services.acoustic_engine import acoustic_engine
+                latest_ass = acoustic_engine.get_latest_assessment(sess.session_id)
+                if latest_ass:
+                    latest = latest_ass.model_dump()
+            return latest
+        if call_id in self._recent_calls_map:
+            c = self._recent_calls_map[call_id]
+            return c.get("latest_acoustic")
+        return None
+
+    async def get_call_acoustic_history(self, call_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Returns complete Acoustic assessment history for active or completed call."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            hist = sess.get_acoustic_history()
+            if not hist:
+                from app.services.acoustic_engine import acoustic_engine
+                hist_ass = acoustic_engine.get_assessment_history(sess.session_id)
+                if hist_ass:
+                    hist = [a.model_dump() for a in hist_ass]
+            return hist
+        if call_id in self._recent_calls_map:
+            c = self._recent_calls_map[call_id]
+            return c.get("acoustic_history", [])
         return None
 
     async def acknowledge_call_signal(

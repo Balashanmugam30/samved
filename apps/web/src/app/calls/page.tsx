@@ -231,6 +231,29 @@ export default function OperatorCallsPage() {
   const [sviLabResult, setSviLabResult] = useState<any>(null);
   const [isEvaluatingSvi, setIsEvaluatingSvi] = useState<boolean>(false);
 
+  // Phase 6 Acoustic Engine State
+  const [acousticQuality, setAcousticQuality] = useState<string>("GOOD");
+  const [acousticConfidence, setAcousticConfidence] = useState<number>(1.0);
+  const [acousticSpeechRatio, setAcousticSpeechRatio] = useState<number>(0.0);
+  const [acousticSilenceRatio, setAcousticSilenceRatio] = useState<number>(1.0);
+  const [acousticLongestPause, setAcousticLongestPause] = useState<number>(0);
+  const [acousticPauseCount, setAcousticPauseCount] = useState<number>(0);
+  const [acousticInterruptions, setAcousticInterruptions] = useState<number>(0);
+  const [acousticEnergyVar, setAcousticEnergyVar] = useState<number>(0.0);
+  const [acousticMeanRms, setAcousticMeanRms] = useState<number>(0.0);
+  const [acousticMedianF0, setAcousticMedianF0] = useState<number | null>(null);
+  const [acousticSignals, setAcousticSignals] = useState<Array<{ code: string; evidence: string; confidence: number; threshold_applied?: string }>>([]);
+  const [isAcousticLabOpen, setIsAcousticLabOpen] = useState<boolean>(false);
+  const [acousticLabDuration, setAcousticLabDuration] = useState<number>(4000);
+  const [acousticLabSpeechRatio, setAcousticLabSpeechRatio] = useState<number>(0.65);
+  const [acousticLabMaxSilence, setAcousticLabMaxSilence] = useState<number>(1200);
+  const [acousticLabInterruptions, setAcousticLabInterruptions] = useState<number>(0);
+  const [acousticLabEnergyVar, setAcousticLabEnergyVar] = useState<number>(0.25);
+  const [acousticLabClipping, setAcousticLabClipping] = useState<number>(0.0);
+  const [acousticLabMeanRms, setAcousticLabMeanRms] = useState<number>(450.0);
+  const [acousticLabResult, setAcousticLabResult] = useState<any>(null);
+  const [isEvaluatingAcoustic, setIsEvaluatingAcoustic] = useState<boolean>(false);
+
   // UI Modals & Filters
   const [eventFilter, setEventFilter] = useState<EventFilterCategory>("ALL");
   const [inspectedEvent, setInspectedEvent] = useState<EventEnvelope | null>(null);
@@ -255,10 +278,20 @@ export default function OperatorCallsPage() {
     initialCallId: selectedCallId,
     onSnapshot: (snapshotPayload) => {
       if (snapshotPayload.active_calls) {
-        setActiveCalls(snapshotPayload.active_calls);
+        setActiveCalls((prev) => {
+          if (prev.length > 0 && snapshotPayload.active_calls.length === 0) {
+            return prev;
+          }
+          return snapshotPayload.active_calls;
+        });
       }
       if (snapshotPayload.recent_calls) {
-        setRecentCalls(snapshotPayload.recent_calls);
+        setRecentCalls((prev) => {
+          if (prev.length > 0 && snapshotPayload.recent_calls.length === 0) {
+            return prev;
+          }
+          return snapshotPayload.recent_calls;
+        });
       }
       if (snapshotPayload.system_mode) {
         setSystemMode(snapshotPayload.system_mode);
@@ -473,6 +506,24 @@ export default function OperatorCallsPage() {
             ]);
           }
           break;
+
+        case EventType.ACOUSTIC_UPDATE:
+          if (payload) {
+            setAcousticQuality(String(payload.quality || "GOOD"));
+            setAcousticConfidence(Number(payload.confidence ?? 1.0));
+            setAcousticSpeechRatio(Number(payload.speech_activity_ratio ?? 0));
+            setAcousticSilenceRatio(Number(payload.silence_ratio ?? 1.0));
+            setAcousticLongestPause(Number(payload.longest_pause_ms ?? 0));
+            setAcousticPauseCount(Number(payload.pause_count ?? 0));
+            setAcousticInterruptions(Number(payload.interruption_count ?? 0));
+            setAcousticEnergyVar(Number(payload.energy_variability ?? 0));
+            setAcousticMeanRms(Number(payload.mean_energy_rms ?? 0));
+            setAcousticMedianF0(payload.median_f0_hz !== undefined ? payload.median_f0_hz : null);
+            if (Array.isArray(payload.signals)) {
+              setAcousticSignals(payload.signals);
+            }
+          }
+          break;
       }
     },
   });
@@ -582,6 +633,39 @@ export default function OperatorCallsPage() {
         }
       } catch (e) {
         console.error("Error loading SVI snapshot:", e);
+      }
+
+      // Phase 6 Acoustic Snapshot
+      try {
+        const acRes = await fetch(`${apiUrl}/v1/acoustic/calls/${callId}`);
+        if (acRes.ok) {
+          const acData = await acRes.json();
+          setAcousticQuality(acData.quality || "GOOD");
+          setAcousticConfidence(acData.confidence ?? 1.0);
+          setAcousticSpeechRatio(acData.voice_activity?.speech_activity_ratio ?? 0);
+          setAcousticSilenceRatio(acData.voice_activity?.silence_ratio ?? 1.0);
+          setAcousticLongestPause(acData.pause_metrics?.longest_pause_ms ?? 0);
+          setAcousticPauseCount(acData.pause_metrics?.pause_count ?? 0);
+          setAcousticInterruptions(acData.interruption_metrics?.interruption_count ?? 0);
+          setAcousticEnergyVar(acData.energy_metrics?.energy_variability ?? 0);
+          setAcousticMeanRms(acData.energy_metrics?.mean_energy_rms ?? 0);
+          setAcousticMedianF0(acData.pitch_metrics?.median_f0_hz ?? null);
+          setAcousticSignals(acData.operational_signals || []);
+        } else {
+          setAcousticQuality("GOOD");
+          setAcousticConfidence(1.0);
+          setAcousticSpeechRatio(0.0);
+          setAcousticSilenceRatio(1.0);
+          setAcousticLongestPause(0);
+          setAcousticPauseCount(0);
+          setAcousticInterruptions(0);
+          setAcousticEnergyVar(0.0);
+          setAcousticMeanRms(0.0);
+          setAcousticMedianF0(null);
+          setAcousticSignals([]);
+        }
+      } catch (e) {
+        console.error("Error loading Acoustic snapshot:", e);
       }
     } catch (err) {
       console.error("Error loading call snapshot:", err);
@@ -846,6 +930,17 @@ export default function OperatorCallsPage() {
           >
             <Activity className="h-3.5 w-3.5 text-cyan-400" />
             <span>SVI Lab</span>
+          </button>
+
+          {/* Phase 6: Acoustic Simulation Lab Button */}
+          <button
+            data-testid="open-acoustic-lab"
+            onClick={() => setIsAcousticLabOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 text-xs font-semibold transition-all"
+            title="Open Acoustic Analysis Simulation Lab"
+          >
+            <Volume2 className="h-3.5 w-3.5 text-purple-400" />
+            <span>Acoustic Lab</span>
           </button>
 
           {/* Action Buttons */}
@@ -1375,6 +1470,126 @@ export default function OperatorCallsPage() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Phase 6: Acoustic Signals Panel */}
+              <div data-testid="acoustic-panel" className="mx-5 mt-3 p-4 rounded-xl bg-gradient-to-br from-slate-900/90 to-purple-950/30 border border-purple-800/40 shadow">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`h-11 w-11 rounded-lg flex items-center justify-center font-black ${
+                        acousticQuality === "EXCELLENT"
+                          ? "bg-emerald-600/30 border border-emerald-500/50 text-emerald-300"
+                          : acousticQuality === "GOOD"
+                          ? "bg-cyan-600/30 border border-cyan-500/50 text-cyan-300"
+                          : acousticQuality === "DEGRADED"
+                          ? "bg-amber-600/30 border border-amber-500/50 text-amber-300"
+                          : acousticQuality === "POOR"
+                          ? "bg-red-600/30 border border-red-500/50 text-red-300"
+                          : "bg-slate-800 border border-slate-700 text-slate-400"
+                      }`}
+                    >
+                      <Volume2 className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold tracking-wide uppercase text-slate-300">
+                          Acoustic Telemetry:
+                        </span>
+                        <span
+                          data-testid="acoustic-quality-badge"
+                          className={`text-xs px-2.5 py-0.5 rounded font-black tracking-wider ${
+                            acousticQuality === "EXCELLENT"
+                              ? "bg-emerald-500 text-white"
+                              : acousticQuality === "GOOD"
+                              ? "bg-cyan-500 text-slate-950"
+                              : acousticQuality === "DEGRADED"
+                              ? "bg-amber-500 text-slate-950"
+                              : acousticQuality === "POOR"
+                              ? "bg-red-500 text-white animate-pulse"
+                              : "bg-slate-700 text-slate-300"
+                          }`}
+                        >
+                          {acousticQuality}
+                        </span>
+                        <span
+                          data-testid="acoustic-confidence"
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono border border-slate-700"
+                        >
+                          Conf: {Math.round(acousticConfidence * 100)}%
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 font-semibold border border-purple-700">
+                          Canonical 8kHz PCM
+                        </span>
+                      </div>
+                      <p data-testid="acoustic-disclaimer" className="text-[11px] text-slate-400 mt-1">
+                        Operational support signals only. Not clinical or diagnostic.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Acoustic Metrics Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-3 border-t border-slate-800/80">
+                  <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                    <div className="text-[10px] text-slate-400 uppercase font-semibold">Voice Activity</div>
+                    <div data-testid="acoustic-speech-ratio" className="text-sm font-bold text-white mt-0.5">
+                      {Math.round(acousticSpeechRatio * 100)}%
+                    </div>
+                    <div className="text-[10px] text-slate-500">Silence: {Math.round(acousticSilenceRatio * 100)}%</div>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                    <div className="text-[10px] text-slate-400 uppercase font-semibold">Longest Pause</div>
+                    <div data-testid="acoustic-longest-pause" className="text-sm font-bold text-white mt-0.5">
+                      {acousticLongestPause}ms
+                    </div>
+                    <div data-testid="acoustic-pause-count" className="text-[10px] text-slate-500">
+                      Pauses: {acousticPauseCount}
+                    </div>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                    <div className="text-[10px] text-slate-400 uppercase font-semibold">Interruption Count</div>
+                    <div data-testid="acoustic-interruptions" className="text-sm font-bold text-white mt-0.5">
+                      {acousticInterruptions}
+                    </div>
+                    <div className="text-[10px] text-slate-500">Barge-in turns</div>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                    <div className="text-[10px] text-slate-400 uppercase font-semibold">Energy & Pitch</div>
+                    <div data-testid="acoustic-energy-var" className="text-sm font-bold text-white mt-0.5">
+                      CV {acousticEnergyVar.toFixed(2)}
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {acousticMedianF0 ? `${acousticMedianF0} Hz` : `RMS ${acousticMeanRms.toFixed(0)}`}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active Operational Signals */}
+                <div className="mt-3 pt-2.5 border-t border-slate-800/80">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-purple-300 mb-1.5 flex items-center justify-between">
+                    <span>Operational Acoustic Signals</span>
+                    <span className="text-slate-500 font-normal lowercase">({acousticSignals.length} active)</span>
+                  </div>
+                  <div data-testid="acoustic-signals-list" className="flex flex-wrap gap-1.5">
+                    {acousticSignals.length === 0 ? (
+                      <span className="text-[11px] text-slate-500 italic">No elevated acoustic anomalies detected.</span>
+                    ) : (
+                      acousticSignals.map((sig, idx) => (
+                        <div
+                          key={idx}
+                          data-testid="acoustic-signal-chip"
+                          className="px-2.5 py-1 rounded bg-purple-950/60 border border-purple-700/50 text-purple-200 text-xs flex items-center gap-1.5"
+                          title={sig.evidence}
+                        >
+                          <Activity className="h-3 w-3 text-purple-400 shrink-0" />
+                          <span className="font-semibold">{sig.code}</span>
+                          <span className="text-[10px] text-slate-400 border-l border-purple-800/80 pl-1.5">{sig.evidence}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Live Transcript Chronological Stream */}
@@ -2229,6 +2444,348 @@ export default function OperatorCallsPage() {
                 <div className="text-[10px] text-slate-500 italic flex items-center gap-1.5">
                   <Mic className="h-3 w-3" />
                   {sviLabResult.acoustic_evidence_note || "Acoustic evidence: Not available in current phase (Phase 6 deferred)"}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Phase 6: Acoustic Simulation Lab Modal */}
+      {isAcousticLabOpen && (
+        <div data-testid="acoustic-lab-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-950 border border-purple-700/40 rounded-2xl w-full max-w-2xl mx-6 max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <Volume2 className="h-5 w-5 text-purple-400" />
+                <h2 className="text-lg font-bold text-white">Acoustic Analysis Simulation Lab</h2>
+              </div>
+              <button
+                data-testid="close-acoustic-lab"
+                onClick={() => setIsAcousticLabOpen(false)}
+                className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 mb-4">
+              Test the deterministic Acoustic Analysis Engine with synthetic non-verbal parameters.
+              Acoustic analysis provides <strong className="text-purple-300">Operational Support Signals Only</strong> — NOT a clinical, medical, psychiatric, or diagnostic evaluation.
+            </p>
+
+            {/* Preset Scenarios */}
+            <div className="space-y-2 mb-4">
+              <label className="block text-xs font-semibold text-slate-300">Preset Scenarios:</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  data-testid="preset-normal-convo"
+                  onClick={() => {
+                    setAcousticLabDuration(4000);
+                    setAcousticLabSpeechRatio(0.65);
+                    setAcousticLabMaxSilence(1200);
+                    setAcousticLabInterruptions(0);
+                    setAcousticLabEnergyVar(0.25);
+                    setAcousticLabClipping(0.0);
+                    setAcousticLabMeanRms(450.0);
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-medium"
+                >
+                  Normal Conversation
+                </button>
+                <button
+                  data-testid="preset-prolonged-silence"
+                  onClick={() => {
+                    setAcousticLabDuration(6000);
+                    setAcousticLabSpeechRatio(0.25);
+                    setAcousticLabMaxSilence(3500);
+                    setAcousticLabInterruptions(0);
+                    setAcousticLabEnergyVar(0.20);
+                    setAcousticLabClipping(0.0);
+                    setAcousticLabMeanRms(350.0);
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-medium"
+                >
+                  Prolonged Silence
+                </button>
+                <button
+                  data-testid="preset-frequent-interruptions"
+                  onClick={() => {
+                    setAcousticLabDuration(4000);
+                    setAcousticLabSpeechRatio(0.60);
+                    setAcousticLabMaxSilence(800);
+                    setAcousticLabInterruptions(3);
+                    setAcousticLabEnergyVar(0.35);
+                    setAcousticLabClipping(0.0);
+                    setAcousticLabMeanRms(600.0);
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-red-300 border border-red-500/30 font-medium"
+                >
+                  Frequent Interruptions
+                </button>
+                <button
+                  data-testid="preset-high-energy-var"
+                  onClick={() => {
+                    setAcousticLabDuration(4000);
+                    setAcousticLabSpeechRatio(0.70);
+                    setAcousticLabMaxSilence(900);
+                    setAcousticLabInterruptions(0);
+                    setAcousticLabEnergyVar(0.65);
+                    setAcousticLabClipping(0.0);
+                    setAcousticLabMeanRms(650.0);
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 font-medium"
+                >
+                  High Energy Variability
+                </button>
+                <button
+                  data-testid="preset-low-quality"
+                  onClick={() => {
+                    setAcousticLabDuration(3000);
+                    setAcousticLabSpeechRatio(0.50);
+                    setAcousticLabMaxSilence(800);
+                    setAcousticLabInterruptions(0);
+                    setAcousticLabEnergyVar(0.25);
+                    setAcousticLabClipping(0.15);
+                    setAcousticLabMeanRms(500.0);
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/30 font-medium"
+                >
+                  Low Audio Quality
+                </button>
+                <button
+                  data-testid="preset-insufficient"
+                  onClick={() => {
+                    setAcousticLabDuration(150);
+                    setAcousticLabSpeechRatio(0.10);
+                    setAcousticLabMaxSilence(100);
+                    setAcousticLabInterruptions(0);
+                    setAcousticLabEnergyVar(0.0);
+                    setAcousticLabClipping(0.0);
+                    setAcousticLabMeanRms(100.0);
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-600 font-medium"
+                >
+                  Insufficient Signal
+                </button>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Audio Duration (ms): <span className="text-purple-300 font-mono">{acousticLabDuration}</span>
+                </label>
+                <input
+                  type="range"
+                  min={100}
+                  max={10000}
+                  step={100}
+                  value={acousticLabDuration}
+                  onChange={(e) => setAcousticLabDuration(Number(e.target.value))}
+                  className="w-full accent-purple-500"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Speech Activity Ratio: <span className="text-purple-300 font-mono">{Math.round(acousticLabSpeechRatio * 100)}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={1.0}
+                  step={0.05}
+                  value={acousticLabSpeechRatio}
+                  onChange={(e) => setAcousticLabSpeechRatio(Number(e.target.value))}
+                  className="w-full accent-purple-500"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Max Contiguous Silence (ms): <span className="text-purple-300 font-mono">{acousticLabMaxSilence}</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={6000}
+                  step={200}
+                  value={acousticLabMaxSilence}
+                  onChange={(e) => setAcousticLabMaxSilence(Number(e.target.value))}
+                  className="w-full accent-purple-500"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Caller Barge-in Interruptions: <span className="text-purple-300 font-mono">{acousticLabInterruptions}</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={5}
+                  step={1}
+                  value={acousticLabInterruptions}
+                  onChange={(e) => setAcousticLabInterruptions(Number(e.target.value))}
+                  className="w-full accent-purple-500"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Energy Variability (CV): <span className="text-purple-300 font-mono">{acousticLabEnergyVar.toFixed(2)}</span>
+                </label>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={1.0}
+                  step={0.05}
+                  value={acousticLabEnergyVar}
+                  onChange={(e) => setAcousticLabEnergyVar(Number(e.target.value))}
+                  className="w-full accent-purple-500"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Clipping Ratio: <span className="text-purple-300 font-mono">{Math.round(acousticLabClipping * 100)}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={0.30}
+                  step={0.02}
+                  value={acousticLabClipping}
+                  onChange={(e) => setAcousticLabClipping(Number(e.target.value))}
+                  className="w-full accent-purple-500"
+                />
+              </div>
+            </div>
+
+            <button
+              data-testid="run-acoustic-eval"
+              disabled={isEvaluatingAcoustic}
+              onClick={async () => {
+                setIsEvaluatingAcoustic(true);
+                setAcousticLabResult(null);
+                try {
+                  const res = await fetch(`${apiUrl}/v1/acoustic/evaluate`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      call_id: "sim-acoustic-lab",
+                      session_id: "sim-acoustic-sess",
+                      audio_duration_ms: acousticLabDuration,
+                      speech_ratio: acousticLabSpeechRatio,
+                      max_silence_ms: acousticLabMaxSilence,
+                      interruptions: acousticLabInterruptions,
+                      energy_variability: acousticLabEnergyVar,
+                      clipping_ratio: acousticLabClipping,
+                      mean_rms: acousticLabMeanRms,
+                    }),
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    setAcousticLabResult(data);
+                  }
+                } catch (e) {
+                  console.error("Error evaluating acoustic simulation:", e);
+                } finally {
+                  setIsEvaluatingAcoustic(false);
+                }
+              }}
+              className="w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-semibold text-xs transition-all shadow-md flex items-center justify-center gap-2"
+            >
+              {isEvaluatingAcoustic ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Evaluating Acoustic Window...</span>
+                </>
+              ) : (
+                <>
+                  <Activity className="h-4 w-4" />
+                  <span>Run Acoustic Evaluation</span>
+                </>
+              )}
+            </button>
+
+            {/* Evaluation Results */}
+            {acousticLabResult && (
+              <div data-testid="acoustic-lab-result" className="mt-5 p-4 rounded-xl bg-slate-900 border border-purple-800/60 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs px-3 py-1 rounded font-black tracking-wider ${
+                      acousticLabResult.quality === "EXCELLENT" ? "bg-emerald-500 text-white"
+                      : acousticLabResult.quality === "GOOD" ? "bg-cyan-500 text-slate-950"
+                      : acousticLabResult.quality === "DEGRADED" ? "bg-amber-500 text-slate-950"
+                      : acousticLabResult.quality === "POOR" ? "bg-red-500 text-white"
+                      : "bg-slate-700 text-slate-300"
+                    }`}>
+                      {acousticLabResult.quality}
+                    </span>
+                    <span className="text-xs text-slate-300 font-mono">
+                      Confidence: {Math.round(acousticLabResult.confidence * 100)}%
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    Duration: {acousticLabResult.turn_metrics?.turn_duration_ms || acousticLabDuration}ms
+                  </div>
+                </div>
+
+                {/* Metrics summary */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                    <div className="text-[10px] text-slate-400">Speech Ratio</div>
+                    <div className="font-bold text-white mt-0.5 font-mono">
+                      {Math.round((acousticLabResult.voice_activity?.speech_activity_ratio || 0) * 100)}%
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                    <div className="text-[10px] text-slate-400">Longest Pause</div>
+                    <div className="font-bold text-white mt-0.5 font-mono">
+                      {acousticLabResult.pause_metrics?.longest_pause_ms || 0}ms
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                    <div className="text-[10px] text-slate-400">Interruptions</div>
+                    <div className="font-bold text-white mt-0.5 font-mono">
+                      {acousticLabResult.interruption_metrics?.interruption_count || 0}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                    <div className="text-[10px] text-slate-400">Energy Variability</div>
+                    <div className="font-bold text-white mt-0.5 font-mono">
+                      CV {(acousticLabResult.energy_metrics?.energy_variability || 0).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Signals */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Triggered Operational Signals ({(acousticLabResult.operational_signals || []).length}):
+                  </label>
+                  <div className="space-y-1.5">
+                    {(acousticLabResult.operational_signals || []).length === 0 ? (
+                      <div className="text-xs text-slate-500 italic p-2 rounded bg-slate-950 border border-slate-800">
+                        No operational signals triggered. Acoustic parameters within nominal baseline.
+                      </div>
+                    ) : (
+                      acousticLabResult.operational_signals.map((sig: any, i: number) => (
+                        <div key={i} className="p-2.5 rounded bg-slate-950 border border-purple-800/50 text-xs flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-purple-300 font-bold">{sig.code}</span>
+                            <span className="text-[11px] text-slate-400">— {sig.evidence}</span>
+                          </div>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                            {sig.threshold_applied || `Conf: ${Math.round(sig.confidence * 100)}%`}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Non-Clinical Disclaimer */}
+                <div className="text-[10px] text-slate-500 italic border-t border-slate-800 pt-2">
+                  {acousticLabResult.disclaimer || "Operational support signals only. Not clinical or diagnostic."}
                 </div>
               </div>
             )}

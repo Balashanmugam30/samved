@@ -222,7 +222,7 @@ pnpm dev:web
 
 ---
 
-## 12. Implementation Status (Phase 5 Complete)
+## 12. Implementation Status (Phase 6 Complete)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -261,7 +261,10 @@ pnpm dev:web
 | **Versioned SVI Weights & Multilingual Lexicons (en-IN, ta-IN, hi-IN)** | ✅ | Phase 5 |
 | **Operator SVI Panel, Feature Attribution & Turn History** | ✅ | Phase 5 |
 | **Interactive SVI Simulation Lab** | ✅ | Phase 5 |
-| **Acoustic Paralinguistic Feature Extraction** | ⏳ | Phase 6 |
+| **Acoustic Paralinguistic Feature Extraction & Signal Layer** | ✅ | Phase 6 |
+| **Operator Acoustic Signals Panel & Simulation Lab** | ✅ | Phase 6 |
+| **Acoustic REST APIs (`/v1/acoustic/...`) & Realtime Ingress** | ✅ | Phase 6 |
+| **Adaptive Multilingual Dialogue** | ⏳ | Phase 7 |
 | **Multi-Agent Orchestrator** | ⏳ | Phase 9 |
 | **Statutory & Scheme RAG (NDPS / IRCA)** | ⏳ | Phase 10 |
 | **Longitudinal Case Intelligence** | ⏳ | Phase 11 |

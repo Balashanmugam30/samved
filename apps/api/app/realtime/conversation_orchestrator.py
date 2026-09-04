@@ -4,7 +4,7 @@ import time
 import uuid
 from collections import deque
 from datetime import datetime, timezone
-from typing import Any, Callable, Deque, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional, Set
 
 from app.core.config import get_settings
 from app.realtime.audio_adapter import AudioStreamAdapter
@@ -57,6 +57,10 @@ class ConversationOrchestrator:
         self.latest_svi: Optional[Any] = None
         self.svi_assessments: List[Any] = []
 
+        # Phase 6 Deterministic Acoustic Engine tracking
+        self.latest_acoustic: Optional[Any] = None
+        self.acoustic_assessments: List[Any] = []
+
         # Active turn & latency tracking
         self.active_latency = TurnLatency()
         self.last_completed_latency = TurnLatency()
@@ -91,6 +95,11 @@ class ConversationOrchestrator:
         if self.state == ConversationState.SPEAKING:
             if AudioStreamAdapter.is_speech_active(raw_pcm, threshold_rms=350.0):
                 logger.info(f"Barge-in detected via voice activity for session {self.session_id}!")
+                try:
+                    from app.services.acoustic_engine import acoustic_engine
+                    acoustic_engine.record_interruption(self.session_id)
+                except Exception:
+                    pass
                 self.interrupt(reason="caller_voice_barge_in")
 
         # Asynchronously forward chunk to STT provider
@@ -238,7 +247,53 @@ class ConversationOrchestrator:
         except Exception as e:
             logger.error(f"Error in deterministic safety evaluation for {self.session_id}: {e}")
 
-        # 5. Phase 5: Deterministic SVI Evaluation
+        # 5. Phase 6: Deterministic Acoustic Analysis Evaluation
+        acoustic_assessment = None
+        try:
+            from app.services.acoustic_engine import acoustic_engine
+            acoustic_assessment = acoustic_engine.evaluate_window(
+                call_id=self.call_id,
+                session_id=self.session_id,
+                turn_id=utterance.utterance_id,
+            )
+            self.latest_acoustic = acoustic_assessment
+            self.acoustic_assessments.append(acoustic_assessment)
+
+            # Broadcast ACOUSTIC_UPDATE event
+            if acoustic_assessment:
+                self.broadcast(
+                    "ACOUSTIC_UPDATE",
+                    {
+                        "call_id": self.call_id,
+                        "session_id": self.session_id,
+                        "quality": acoustic_assessment.quality.value,
+                        "confidence": acoustic_assessment.confidence,
+                        "speech_activity_ratio": acoustic_assessment.voice_activity.speech_activity_ratio,
+                        "silence_ratio": acoustic_assessment.voice_activity.silence_ratio,
+                        "longest_pause_ms": acoustic_assessment.pause_metrics.longest_pause_ms,
+                        "pause_count": acoustic_assessment.pause_metrics.pause_count,
+                        "interruption_count": acoustic_assessment.interruption_metrics.interruption_count,
+                        "energy_variability": acoustic_assessment.energy_metrics.energy_variability,
+                        "mean_energy_rms": acoustic_assessment.energy_metrics.mean_energy_rms,
+                        "median_f0_hz": acoustic_assessment.pitch_metrics.median_f0_hz,
+                        "signals": [
+                            {
+                                "code": s.code.value if hasattr(s.code, "value") else str(s.code),
+                                "evidence": s.evidence,
+                                "confidence": s.confidence,
+                            }
+                            for s in acoustic_assessment.operational_signals
+                        ],
+                        "engine_version": acoustic_assessment.engine_version,
+                        "disclaimer": acoustic_assessment.disclaimer,
+                        "is_supporting_signal": True,
+                        "evaluated_at": acoustic_assessment.evaluated_at,
+                    },
+                )
+        except Exception as e:
+            logger.error(f"Error in acoustic evaluation for {self.session_id}: {e}")
+
+        # 6. Phase 5: Deterministic SVI Evaluation
         try:
             from app.services.svi_engine import svi_engine
             turns_data = [
@@ -258,6 +313,7 @@ class ConversationOrchestrator:
                 safety_signals=all_signals,
                 previous_score=prev_score,
                 turn_index=len(self.utterances),
+                acoustic_assessment=acoustic_assessment,
             )
             self.latest_svi = svi_assessment
             self.svi_assessments.append(svi_assessment)

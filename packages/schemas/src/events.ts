@@ -93,14 +93,34 @@ export interface TranscriptPayload {
   end_time_ms: number;
 }
 
+export interface AcousticSignalItem {
+  code: string;
+  evidence: string;
+  confidence: number;
+}
+
 export interface AcousticUpdatePayload {
+  quality: "EXCELLENT" | "GOOD" | "DEGRADED" | "POOR" | "INSUFFICIENT";
+  confidence: number; // 0.0 to 1.0
+  speech_activity_ratio: number;
+  silence_ratio: number;
+  longest_pause_ms: number;
+  pause_count: number;
+  interruption_count: number;
+  energy_variability: number;
+  mean_energy_rms: number;
+  median_f0_hz?: number | null;
+  signals: AcousticSignalItem[];
+  engine_version?: string;
+  disclaimer?: string;
+  is_supporting_signal?: boolean; // Explicitly non-diagnostic
+  // Legacy / backward-compatible optional fields
   pitch_hz?: number;
   speaking_rate_wpm?: number;
   pause_ratio?: number;
   energy_rms?: number;
   jitter?: number;
   shimmer?: number;
-  is_supporting_signal: true; // Explicitly marked as non-diagnostic
 }
 
 export interface SafetySignalPayload {

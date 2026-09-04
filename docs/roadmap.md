@@ -8,8 +8,8 @@
 | **3** | **Realtime Transcripts & Operator Console** | Dedicated `/ws/operator` event channel, dynamic subscriptions (`SUBSCRIBE_CALL`), REST snapshot APIs (`/v1/calls`), Master-Detail operator console with live partial/final transcripts, timeline filtering, payload inspector, and localhost runbook. | **COMPLETE** |
 | **4** | **Deterministic Safety Engine** | Explicit versioned safety rules (v1), sub-5ms deterministic evaluation, Unicode NFC normalization, clause-isolated negation check, compound weapon escalation, operator oversight banner, audit acknowledgment trail, and interactive Safety Lab. | **COMPLETE** |
 | **5** | **Stress Vulnerability Index (SVI)** | Explainable 0–100 vulnerability index scoring engine with 4 calibrated prototype bands, temporal recency weighting, protective factor bounds, feature attribution, operator SVI panel, and interactive SVI Simulation Lab. | **COMPLETE** |
-| **6** | **Acoustic Signal Processing** | Non-verbal paralinguistic feature extraction (pitch, jitter, shimmer, speaking rate, silence ratio) as supporting triage evidence. | ⏳ Next |
-| **7** | **Adaptive Multilingual Dialogue** | Code-switching handling, empathetic pacing, clarification turns, conversational repair. | ⏳ Scheduled |
+| **6** | **Acoustic Signal Processing** | Deterministic paralinguistic and telephony quality analysis (pitch 80–350Hz, speech ratio, silence, energy variability, clipping) as supporting triage evidence, operator Acoustic Panel, and Simulation Lab. | **COMPLETE** |
+| **7** | **Adaptive Multilingual Dialogue** | Code-switching handling, empathetic pacing, clarification turns, conversational repair. | ⏳ Next |
 | **8** | **Human Operator Console** | Full-fledged tele-counselor workstation with warm call transfer, manual SVI overrides, and live counseling notes. | ⏳ Scheduled |
 | **9** | **Multi-Agent Orchestration** | Specialized bounded agents (Safety, Legal, Care, Case, Follow-up, Governance) with state graph coordination. | ⏳ Scheduled |
 | **10** | **Grounded Legal & Scheme RAG** | Official gazette RAG (NDPS Act, Mental Healthcare Act, MoSJE NAPDDR IRCA database) with strict citation verification. | ⏳ Scheduled |

@@ -142,7 +142,8 @@ class SVIEngine:
         turns: List[Dict[str, Any]],
         safety_signals: Optional[List[Any]] = None,
         previous_score: Optional[int] = None,
-        turn_index: int = 0
+        turn_index: int = 0,
+        acoustic_assessment: Optional[Any] = None,
     ) -> SVIAssessment:
         """
         Evaluates conversational turns and deterministic safety signals to generate an SVIAssessment.
@@ -368,6 +369,27 @@ class SVIEngine:
             or high_severity_present
         )
 
+        # 11. Acoustic Evidence Integration (Phase 6)
+        acoustic_available = False
+        acoustic_note = "Acoustic evidence: Not available in current phase (Phase 6 deferred)"
+        if acoustic_assessment is not None:
+            acoustic_available = True
+            q_val = (
+                acoustic_assessment.quality.value
+                if hasattr(acoustic_assessment.quality, "value")
+                else str(acoustic_assessment.quality)
+            )
+            signals = getattr(acoustic_assessment, "operational_signals", []) or []
+            if signals:
+                sig_labels = [
+                    (s.code.value if hasattr(s.code, "value") else str(s.code))
+                    for s in signals
+                ]
+                acoustic_note = f"Acoustic observations: quality={q_val}, signals={', '.join(sig_labels)}"
+            else:
+                conf = getattr(acoustic_assessment, "confidence", 1.0)
+                acoustic_note = f"Acoustic telemetry active: quality={q_val}, {round(conf * 100)}% confidence"
+
         return SVIAssessment(
             call_id=call_id,
             session_id=session_id,
@@ -381,8 +403,8 @@ class SVIEngine:
             top_contributors=top_contributors,
             protective_factor_reduction=protective_reduction,
             critical_override_applied=critical_override_applied,
-            acoustic_evidence_available=False,
-            acoustic_evidence_note="Acoustic evidence: Not available in current phase (Phase 6 deferred)",
+            acoustic_evidence_available=acoustic_available,
+            acoustic_evidence_note=acoustic_note,
             requires_human_review=requires_human_review,
             disclaimer="Operational Prototype Priority Indicator — NOT a clinical, medical, or diagnostic score",
             evaluated_at=datetime.now(timezone.utc).isoformat(),

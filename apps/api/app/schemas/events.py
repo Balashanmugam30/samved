@@ -103,3 +103,30 @@ class SafetySignalPayload(BaseModel):
     severity: str
     description: str
     requires_human_confirmation: bool = True
+
+
+class AcousticSignalItem(BaseModel):
+    code: str
+    evidence: str
+    confidence: float = 1.0
+
+
+class AcousticUpdatePayload(BaseModel):
+    quality: str = "GOOD"
+    confidence: float = 1.0
+    speech_activity_ratio: float = 0.0
+    silence_ratio: float = 1.0
+    longest_pause_ms: int = 0
+    pause_count: int = 0
+    interruption_count: int = 0
+    energy_variability: float = 0.0
+    mean_energy_rms: float = 0.0
+    median_f0_hz: Optional[float] = None
+    signals: List[AcousticSignalItem] = Field(default_factory=list)
+    engine_version: str = "v1.0.0"
+    disclaimer: str = (
+        "Acoustic analysis is an operational support signal and is not a clinical, medical, "
+        "diagnostic, lie-detection, credibility, or psychological state classifier."
+    )
+    is_supporting_signal: bool = True
+

@@ -25,6 +25,9 @@ export enum EventType {
   RISK_UPDATED = "RISK_UPDATED",
   SVI_UPDATED = "SVI_UPDATED",
 
+  // Adaptive conversation policy (Phase 7)
+  ADAPTIVE_STRATEGY_SELECTED = "ADAPTIVE_STRATEGY_SELECTED",
+
   // Multi-agent & AI response
   AGENT_ACTION = "AGENT_ACTION",
   AI_THINKING = "AI_THINKING",
@@ -171,4 +174,23 @@ export interface HumanAlertPayload {
   title: string;
   message: string;
   action_required: boolean;
+}
+
+export interface AdaptiveStrategySelectedPayload {
+  call_id: string;
+  session_id: string;
+  turn_index: number;
+  action: string;
+  priority: string;
+  target_information: string;
+  reason_codes: string[];
+  evidence_refs: string[];
+  language: string;
+  confidence: number;
+  constraints?: string[];
+  requires_human_review?: boolean;
+  operator_override_active?: boolean;
+  fallback_applied?: boolean;
+  disclaimer?: string;
+  evaluated_at: string;
 }

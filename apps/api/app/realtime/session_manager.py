@@ -79,6 +79,10 @@ class TelephonySession:
         self.acoustic_history: List[Dict[str, Any]] = []
         self.latest_acoustic: Optional[Dict[str, Any]] = None
 
+        # Phase 7 Adaptive Conversation Policy
+        self.adaptive_history: List[Dict[str, Any]] = []
+        self.latest_adaptive_strategy: Optional[Dict[str, Any]] = None
+
         # Metrics and sequence validation
         self.last_sequence_number: int = 0
         self.inbound_frames_count: int = 0
@@ -118,6 +122,10 @@ class TelephonySession:
                     ac_payload = dumped.get("payload", {})
                     self.latest_acoustic = ac_payload
                     self.acoustic_history.append(ac_payload)
+                elif "ADAPTIVE_STRATEGY_SELECTED" in ev_type_str:
+                    ad_payload = dumped.get("payload", {})
+                    self.latest_adaptive_strategy = ad_payload
+                    self.adaptive_history.append(ad_payload)
         except Exception as e:
             logger.error(f"Error recording event in session {self.session_id}: {e}")
 
@@ -148,6 +156,20 @@ class TelephonySession:
     def get_acoustic_history(self) -> List[Dict[str, Any]]:
         """Returns complete acoustic assessment history list."""
         return list(self.acoustic_history)
+
+    def record_adaptive_strategy(self, strategy: Any) -> None:
+        """Stores Adaptive strategy in session history."""
+        dumped = strategy.model_dump() if hasattr(strategy, "model_dump") else strategy
+        self.latest_adaptive_strategy = dumped
+        self.adaptive_history.append(dumped)
+
+    def get_latest_adaptive_strategy(self) -> Optional[Dict[str, Any]]:
+        """Returns latest adaptive strategy dictionary."""
+        return self.latest_adaptive_strategy
+
+    def get_adaptive_history(self) -> List[Dict[str, Any]]:
+        """Returns complete adaptive strategy history list."""
+        return list(self.adaptive_history)
 
     def acknowledge_signal(self, signal_id: str, acknowledged_by: str = "operator") -> Optional[Dict[str, Any]]:
         """Records operator acknowledgment on an active safety signal."""
@@ -232,6 +254,9 @@ class TelephonySession:
             "acoustic_confidence": latest_acoustic_confidence,
             "acoustic_signals_count": latest_acoustic_signals_count,
             "latest_acoustic": self.latest_acoustic,
+            "latest_adaptive_strategy": self.latest_adaptive_strategy,
+            "adaptive_action": self.latest_adaptive_strategy.get("action") if self.latest_adaptive_strategy else None,
+            "adaptive_priority": self.latest_adaptive_strategy.get("priority") if self.latest_adaptive_strategy else None,
             "utterances_count": len(utts),
             "events_count": len(self.event_history),
             "is_active": self.state_machine.is_active,
@@ -633,6 +658,74 @@ class RealtimeSessionManager:
             c = self._recent_calls_map[call_id]
             return c.get("acoustic_history", [])
         return None
+
+    async def get_call_adaptive(self, call_id: str) -> Optional[Dict[str, Any]]:
+        """Returns latest Adaptive Strategy for active or completed call."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            latest = sess.get_latest_adaptive_strategy()
+            if not latest:
+                from app.adaptive.service import adaptive_engine
+                latest_strat = adaptive_engine.get_latest_strategy(call_id)
+                if latest_strat:
+                    latest = latest_strat.model_dump()
+            return latest
+        if call_id in self._recent_calls_map:
+            c = self._recent_calls_map[call_id]
+            return c.get("latest_adaptive_strategy")
+        return None
+
+    async def get_call_adaptive_history(self, call_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Returns complete Adaptive Strategy history for active or completed call."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            hist = sess.get_adaptive_history()
+            if not hist:
+                from app.adaptive.service import adaptive_engine
+                hist_resp = adaptive_engine.get_call_history(call_id)
+                if hist_resp and hist_resp.strategies:
+                    hist = [s.model_dump() for s in hist_resp.strategies]
+            return hist
+        if call_id in self._recent_calls_map:
+            c = self._recent_calls_map[call_id]
+            return c.get("adaptive_history", [])
+        return None
+
+    async def apply_call_operator_override(
+        self, call_id: str, action: str, reason: str, operator_id: str = "operator"
+    ) -> Optional[Dict[str, Any]]:
+        """Applies manual operator override to an active call and broadcasts notification."""
+        from app.adaptive.models import OperatorOverrideAction
+        from app.adaptive.service import adaptive_engine
+
+        try:
+            act_enum = OperatorOverrideAction(action)
+        except ValueError:
+            logger.error(f"Invalid operator override action: {action}")
+            return None
+
+        override = adaptive_engine.apply_operator_override(
+            call_id=call_id,
+            action=act_enum,
+            reason=reason,
+            operator_id=operator_id,
+        )
+
+        sess = await self.get_by_call_id(call_id)
+        if sess and sess.orchestrator:
+            sess.orchestrator.broadcast(
+                "OPERATOR_OVERRIDE_APPLIED",
+                {
+                    "call_id": call_id,
+                    "session_id": sess.session_id,
+                    "action": action,
+                    "reason": reason,
+                    "operator_id": operator_id,
+                    "timestamp": override.applied_at,
+                },
+            )
+
+        return override.model_dump()
 
     async def acknowledge_call_signal(
         self, call_id: str, signal_id: str, acknowledged_by: str = "operator"

@@ -71,6 +71,7 @@ graph TD
         SafetyEngine["🛡️ Deterministic Safety Engine<br/>(Hard Rules & Threat Triggers)"]
         RiskEngine["📊 SVI Engine (0-100 Bands)"]
         AcousticEngine["🎙️ Acoustic Signal Extractor"]
+        AdaptiveEngine["🧭 Adaptive Policy Planner<br/>(P0-P5 Precedence & Validation)"]
         LLM["🤖 Grounded LLM Reasoning<br/>(Gemini Pro / Flash)"]
         RAG["📚 Statutory RAG<br/>(NDPS / MHA / IRCA Schemes)"]
         
@@ -78,7 +79,8 @@ graph TD
         Orchestrator --> SafetyEngine
         Orchestrator --> RiskEngine
         Orchestrator --> AcousticEngine
-        Orchestrator --> LLM
+        Orchestrator --> AdaptiveEngine
+        AdaptiveEngine --> LLM
         RAG --> LLM
         LLM --> SarvamTTS
     end

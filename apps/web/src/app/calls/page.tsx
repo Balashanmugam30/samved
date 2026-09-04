@@ -32,6 +32,7 @@ import {
   CheckSquare,
   FileText,
   Terminal,
+  Compass,
 } from "lucide-react";
 import { useOperatorWebSocket } from "@/hooks/useOperatorWebSocket";
 import { EventEnvelope, EventType } from "@samved/schemas";
@@ -253,6 +254,31 @@ export default function OperatorCallsPage() {
   const [acousticLabMeanRms, setAcousticLabMeanRms] = useState<number>(450.0);
   const [acousticLabResult, setAcousticLabResult] = useState<any>(null);
   const [isEvaluatingAcoustic, setIsEvaluatingAcoustic] = useState<boolean>(false);
+
+  // Phase 7: Adaptive Conversation Engine State
+  const [adaptiveAction, setAdaptiveAction] = useState<string>("ASK_SUPPORT");
+  const [adaptivePriority, setAdaptivePriority] = useState<string>("P4");
+  const [adaptiveTarget, setAdaptiveTarget] = useState<string>("support_domain");
+  const [adaptiveConfidence, setAdaptiveConfidence] = useState<number>(0.95);
+  const [adaptiveReasonCodes, setAdaptiveReasonCodes] = useState<string[]>(["INFORMATION_GAP"]);
+  const [adaptiveEvidence, setAdaptiveEvidence] = useState<string[]>([]);
+  const [adaptiveOverrideActive, setAdaptiveOverrideActive] = useState<boolean>(false);
+  const [adaptiveOverrideReason, setAdaptiveOverrideReason] = useState<string | null>(null);
+  const [adaptiveHistory, setAdaptiveHistory] = useState<Array<{
+    action: string;
+    priority: string;
+    target_information_gap?: string;
+    reason_codes?: string[];
+    evaluated_at?: string;
+  }>>([]);
+  const [isAdaptiveLabOpen, setIsAdaptiveLabOpen] = useState<boolean>(false);
+  const [adaptiveLabInput, setAdaptiveLabInput] = useState<string>("I need help with reporting");
+  const [adaptiveLabLang, setAdaptiveLabLang] = useState<string>("en-IN");
+  const [adaptiveLabSafety, setAdaptiveLabSafety] = useState<string>("NONE");
+  const [adaptiveLabSvi, setAdaptiveLabSvi] = useState<number>(30);
+  const [adaptiveLabAcoustic, setAdaptiveLabAcoustic] = useState<string>("GOOD");
+  const [adaptiveLabResult, setAdaptiveLabResult] = useState<any>(null);
+  const [isEvaluatingAdaptive, setIsEvaluatingAdaptive] = useState<boolean>(false);
 
   // UI Modals & Filters
   const [eventFilter, setEventFilter] = useState<EventFilterCategory>("ALL");
@@ -524,6 +550,28 @@ export default function OperatorCallsPage() {
             }
           }
           break;
+
+        case EventType.ADAPTIVE_STRATEGY_SELECTED:
+          if (payload) {
+            setAdaptiveAction(String(payload.action || "ASK_SUPPORT"));
+            setAdaptivePriority(String(payload.priority || "P4"));
+            setAdaptiveTarget(String(payload.target_information || "support_domain"));
+            setAdaptiveConfidence(Number(payload.confidence ?? 0.95));
+            setAdaptiveReasonCodes(Array.isArray(payload.reason_codes) ? payload.reason_codes.map(String) : []);
+            setAdaptiveEvidence(Array.isArray(payload.evidence_refs) ? payload.evidence_refs.map(String) : []);
+            setAdaptiveOverrideActive(Boolean(payload.operator_override_active));
+            setAdaptiveHistory((prev) => [
+              ...prev,
+              {
+                action: String(payload.action || "ASK_SUPPORT"),
+                priority: String(payload.priority || "P4"),
+                target_information_gap: String(payload.target_information || ""),
+                reason_codes: Array.isArray(payload.reason_codes) ? payload.reason_codes.map(String) : [],
+                evaluated_at: envelope.timestamp,
+              },
+            ]);
+          }
+          break;
       }
     },
   });
@@ -667,8 +715,84 @@ export default function OperatorCallsPage() {
       } catch (e) {
         console.error("Error loading Acoustic snapshot:", e);
       }
+
+      // Phase 7 Adaptive Snapshot & History
+      try {
+        const [adRes, histRes] = await Promise.all([
+          fetch(`${apiUrl}/v1/adaptive/calls/${callId}`),
+          fetch(`${apiUrl}/v1/adaptive/calls/${callId}/history`),
+        ]);
+        if (adRes.ok) {
+          const adData = await adRes.json();
+          setAdaptiveAction(adData.action || "ASK_SUPPORT");
+          setAdaptivePriority(adData.priority || "P4");
+          setAdaptiveTarget(adData.target_information_gap || "support_domain");
+          setAdaptiveConfidence(adData.confidence ?? 0.95);
+          setAdaptiveReasonCodes(adData.reason_codes || []);
+          setAdaptiveEvidence(adData.evidence_used || []);
+          setAdaptiveOverrideActive(Boolean(adData.operator_override_applied));
+          setAdaptiveOverrideReason(adData.operator_override_reason || null);
+        } else {
+          setAdaptiveAction("ASK_SUPPORT");
+          setAdaptivePriority("P4");
+          setAdaptiveTarget("support_domain");
+          setAdaptiveConfidence(0.95);
+          setAdaptiveReasonCodes(["INFORMATION_GAP"]);
+          setAdaptiveEvidence([]);
+          setAdaptiveOverrideActive(false);
+          setAdaptiveOverrideReason(null);
+        }
+        if (histRes.ok) {
+          const histData = await histRes.json();
+          setAdaptiveHistory(
+            (histData.strategies || []).map((s: any) => ({
+              action: s.action,
+              priority: s.priority,
+              target_information_gap: s.target_information_gap,
+              reason_codes: s.reason_codes,
+              evaluated_at: s.evaluated_at,
+            }))
+          );
+        } else {
+          setAdaptiveHistory([]);
+        }
+      } catch (e) {
+        console.error("Error loading Adaptive snapshot:", e);
+      }
     } catch (err) {
       console.error("Error loading call snapshot:", err);
+    }
+  };
+
+  // Phase 7: Handle Operator Override
+  const handleOperatorOverride = async (action: string, reason: string) => {
+    if (!selectedCallId) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/adaptive/calls/${selectedCallId}/override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          reason,
+          operator_id: "operator_console_1",
+        }),
+      });
+      if (res.ok) {
+        setAdaptiveOverrideActive(true);
+        setAdaptiveOverrideReason(reason);
+        // Refresh strategy immediately
+        const adRes = await fetch(`${apiUrl}/v1/adaptive/calls/${selectedCallId}`);
+        if (adRes.ok) {
+          const adData = await adRes.json();
+          setAdaptiveAction(adData.action || "ASK_SUPPORT");
+          setAdaptivePriority(adData.priority || "P4");
+          setAdaptiveTarget(adData.target_information_gap || "support_domain");
+          setAdaptiveReasonCodes(adData.reason_codes || []);
+          setAdaptiveEvidence(adData.evidence_used || []);
+        }
+      }
+    } catch (err) {
+      console.error("Error applying operator override:", err);
     }
   };
 
@@ -941,6 +1065,17 @@ export default function OperatorCallsPage() {
           >
             <Volume2 className="h-3.5 w-3.5 text-purple-400" />
             <span>Acoustic Lab</span>
+          </button>
+
+          {/* Phase 7: Adaptive Simulation Lab Button */}
+          <button
+            data-testid="open-adaptive-lab"
+            onClick={() => setIsAdaptiveLabOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold transition-all"
+            title="Open Adaptive Conversation Strategy Lab"
+          >
+            <Compass className="h-3.5 w-3.5 text-emerald-400" />
+            <span>Adaptive Lab</span>
           </button>
 
           {/* Action Buttons */}
@@ -1590,6 +1725,195 @@ export default function OperatorCallsPage() {
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Phase 7: Adaptive Conversation Engine Panel */}
+              <div data-testid="adaptive-panel" className="mx-5 mt-3 p-4 rounded-xl bg-gradient-to-br from-slate-900/90 to-emerald-950/30 border border-emerald-800/40 shadow">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`h-11 w-11 rounded-lg flex items-center justify-center font-black ${
+                        adaptivePriority === "P0"
+                          ? "bg-rose-600/30 border border-rose-500/50 text-rose-300"
+                          : adaptivePriority === "P1"
+                          ? "bg-amber-600/30 border border-amber-500/50 text-amber-300"
+                          : adaptivePriority === "P2"
+                          ? "bg-orange-600/30 border border-orange-500/50 text-orange-300"
+                          : adaptivePriority === "P3"
+                          ? "bg-blue-600/30 border border-blue-500/50 text-blue-300"
+                          : "bg-emerald-600/30 border border-emerald-500/50 text-emerald-300"
+                      }`}
+                    >
+                      <Compass className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold tracking-wide uppercase text-slate-300">
+                          Adaptive Policy:
+                        </span>
+                        <span
+                          data-testid="adaptive-strategy"
+                          className="text-xs px-2.5 py-0.5 rounded font-black tracking-wider bg-emerald-500 text-slate-950"
+                        >
+                          {adaptiveAction}
+                        </span>
+                        <span
+                          data-testid="adaptive-priority"
+                          className={`text-xs px-2.5 py-0.5 rounded font-black tracking-wider ${
+                            adaptivePriority === "P0"
+                              ? "bg-rose-500 text-white animate-pulse"
+                              : adaptivePriority === "P1"
+                              ? "bg-amber-500 text-slate-950"
+                              : adaptivePriority === "P2"
+                              ? "bg-orange-500 text-white"
+                              : adaptivePriority === "P3"
+                              ? "bg-blue-500 text-white"
+                              : "bg-emerald-600 text-white"
+                          }`}
+                        >
+                          {adaptivePriority}
+                        </span>
+                        <span
+                          data-testid="adaptive-target"
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-emerald-300 font-mono border border-slate-700"
+                        >
+                          Target: {adaptiveTarget}
+                        </span>
+                        <span
+                          data-testid="adaptive-confidence"
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono border border-slate-700"
+                        >
+                          Conf: {Math.round(adaptiveConfidence * 100)}%
+                        </span>
+                        {adaptiveOverrideActive ? (
+                          <span
+                            data-testid="adaptive-override-badge"
+                            className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/50"
+                          >
+                            OVERRIDE ACTIVE{adaptiveOverrideReason ? `: ${adaptiveOverrideReason}` : ""}
+                          </span>
+                        ) : (
+                          <span
+                            data-testid="adaptive-override-badge"
+                            className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 font-medium border border-slate-700/60"
+                          >
+                            AI Autonomous
+                          </span>
+                        )}
+                      </div>
+                      <p data-testid="adaptive-disclaimer" className="text-[11px] text-slate-400 mt-1">
+                        Deterministic conversational strategy layer. Surface realization bounded by safety rules. Non-clinical.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Operator Override Quick Actions */}
+                  <div data-testid="adaptive-override-controls" className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      data-testid="btn-override-human"
+                      onClick={() => handleOperatorOverride("operator_force_human", "Operator escalation to human agent")}
+                      className="px-2.5 py-1 rounded text-xs bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-semibold transition-all"
+                      title="Force Immediate Human Counselor Handoff"
+                    >
+                      Force Human
+                    </button>
+                    <button
+                      data-testid="btn-override-pause"
+                      onClick={() => handleOperatorOverride("operator_pause_adaptive", "Operator paused AI questioning")}
+                      className="px-2.5 py-1 rounded text-xs bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-semibold transition-all"
+                      title="Pause Adaptive Questions (Supportive Silence)"
+                    >
+                      Pause Questions
+                    </button>
+                    <button
+                      data-testid="btn-override-safety"
+                      onClick={() => handleOperatorOverride("operator_request_safety_check", "Operator forced explicit safety check")}
+                      className="px-2.5 py-1 rounded text-xs bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-semibold transition-all"
+                      title="Force Explicit Safety Check Strategy"
+                    >
+                      Safety Check
+                    </button>
+                  </div>
+                </div>
+
+                {/* Reasons & Evidence Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 pt-3 border-t border-slate-800/80">
+                  {/* Reason Codes */}
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 mb-1.5 flex items-center justify-between">
+                      <span>Deterministic Reasons</span>
+                      <span className="text-slate-500 font-normal lowercase">({adaptiveReasonCodes.length})</span>
+                    </div>
+                    <div data-testid="adaptive-reasons" className="flex flex-wrap gap-1.5">
+                      {adaptiveReasonCodes.length === 0 ? (
+                        <span className="text-[11px] text-slate-500 italic">No specific reason codes logged.</span>
+                      ) : (
+                        adaptiveReasonCodes.map((rc, idx) => (
+                          <div
+                            key={idx}
+                            data-testid="adaptive-reason-chip"
+                            className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-200 text-xs flex items-center gap-1"
+                          >
+                            <Activity className="h-3 w-3 text-emerald-400 shrink-0" />
+                            <span className="font-semibold">{rc}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Evidence References */}
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-300 mb-1.5 flex items-center justify-between">
+                      <span>Structured Evidence</span>
+                      <span className="text-slate-500 font-normal lowercase">({adaptiveEvidence.length})</span>
+                    </div>
+                    <div data-testid="adaptive-evidence" className="flex flex-wrap gap-1.5">
+                      {adaptiveEvidence.length === 0 ? (
+                        <span className="text-[11px] text-slate-500 italic">No prior evidence referenced.</span>
+                      ) : (
+                        adaptiveEvidence.map((ev, idx) => (
+                          <div
+                            key={idx}
+                            data-testid="adaptive-evidence-chip"
+                            className="px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-700/50 text-cyan-200 text-xs flex items-center gap-1"
+                          >
+                            <FileText className="h-3 w-3 text-cyan-400 shrink-0" />
+                            <span className="font-mono text-[11px]">{ev}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Strategy History Breadcrumb */}
+                {adaptiveHistory.length > 0 && (
+                  <div className="mt-3 pt-2.5 border-t border-slate-800/80">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center justify-between">
+                      <span>Recent Turn Strategy Trajectory</span>
+                      <span className="text-slate-500 font-normal lowercase">({adaptiveHistory.length} turns)</span>
+                    </div>
+                    <div data-testid="adaptive-history" className="flex items-center gap-1.5 overflow-x-auto py-1">
+                      {adaptiveHistory.map((h, i) => (
+                        <div
+                          key={i}
+                          data-testid="adaptive-history-item"
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono shrink-0 border ${
+                            h.priority === "P0"
+                              ? "bg-rose-950/60 border-rose-700 text-rose-300 font-bold"
+                              : h.priority === "P1"
+                              ? "bg-amber-950/60 border-amber-700 text-amber-300 font-bold"
+                              : "bg-slate-900 border-slate-800 text-slate-300"
+                          }`}
+                          title={`Turn ${i + 1}: ${h.action} (${h.priority})`}
+                        >
+                          T{i + 1}: {h.action}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Live Transcript Chronological Stream */}
@@ -2786,6 +3110,317 @@ export default function OperatorCallsPage() {
                 {/* Non-Clinical Disclaimer */}
                 <div className="text-[10px] text-slate-500 italic border-t border-slate-800 pt-2">
                   {acousticLabResult.disclaimer || "Operational support signals only. Not clinical or diagnostic."}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Phase 7: Adaptive Simulation Lab Modal */}
+      {isAdaptiveLabOpen && (
+        <div data-testid="adaptive-lab-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-950 border border-emerald-700/40 rounded-2xl w-full max-w-2xl mx-6 max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <Compass className="h-5 w-5 text-emerald-400" />
+                <h2 className="text-lg font-bold text-white">Adaptive Conversation Strategy Lab</h2>
+              </div>
+              <button
+                data-testid="close-adaptive-lab"
+                onClick={() => setIsAdaptiveLabOpen(false)}
+                className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 mb-4">
+              Test deterministic conversational planning across safety tiers, SVI vulnerabilities, and caller states.
+              SAMVED policy follows inviolable precedence: <strong className="text-emerald-300">P0 (Critical Safety) &gt; P1 (Elevated Safety) &gt; P2 (High SVI) &gt; P3 (Operational Gaps) &gt; P4 (Clarification/Support) &gt; P5 (Closure)</strong>. Non-clinical.
+            </p>
+
+            {/* Preset Scenarios */}
+            <div className="space-y-2 mb-4">
+              <label className="block text-xs font-semibold text-slate-300">Preset Scenarios:</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  data-testid="preset-danger-unknown"
+                  onClick={() => {
+                    setAdaptiveLabInput("He might find me here soon, I don't know what to do");
+                    setAdaptiveLabSafety("CRITICAL");
+                    setAdaptiveLabSvi(85);
+                    setAdaptiveLabAcoustic("GOOD");
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/30 font-medium"
+                >
+                  Critical Threat (P0)
+                </button>
+                <button
+                  data-testid="preset-high-svi"
+                  onClick={() => {
+                    setAdaptiveLabInput("I feel so overwhelmed and have no one to talk to");
+                    setAdaptiveLabSafety("NONE");
+                    setAdaptiveLabSvi(78);
+                    setAdaptiveLabAcoustic("GOOD");
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-orange-300 border border-orange-500/30 font-medium"
+                >
+                  High Vulnerability (P2)
+                </button>
+                <button
+                  data-testid="preset-poor-audio"
+                  onClick={() => {
+                    setAdaptiveLabInput("...");
+                    setAdaptiveLabSafety("NONE");
+                    setAdaptiveLabSvi(30);
+                    setAdaptiveLabAcoustic("POOR");
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-medium"
+                >
+                  Degraded Audio (P3)
+                </button>
+                <button
+                  data-testid="preset-caller-human"
+                  onClick={() => {
+                    setAdaptiveLabInput("Please connect me to an operator or human counselor right now");
+                    setAdaptiveLabSafety("NONE");
+                    setAdaptiveLabSvi(45);
+                    setAdaptiveLabAcoustic("GOOD");
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 font-medium"
+                >
+                  Human Request (P1)
+                </button>
+                <button
+                  data-testid="preset-caller-refusal"
+                  onClick={() => {
+                    setAdaptiveLabInput("I do not want to answer your question");
+                    setAdaptiveLabSafety("NONE");
+                    setAdaptiveLabSvi(40);
+                    setAdaptiveLabAcoustic("GOOD");
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-medium"
+                >
+                  Caller Refusal (P4)
+                </button>
+                <button
+                  data-testid="preset-closure-ready"
+                  onClick={() => {
+                    setAdaptiveLabInput("Thank you so much, that is all the help I needed today, goodbye");
+                    setAdaptiveLabSafety("NONE");
+                    setAdaptiveLabSvi(15);
+                    setAdaptiveLabAcoustic("GOOD");
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-medium"
+                >
+                  Closure Ready (P5)
+                </button>
+              </div>
+            </div>
+
+            {/* Parameter Controls */}
+            <div className="space-y-3 mb-5 p-4 rounded-xl bg-slate-900 border border-slate-800">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Caller Utterance:
+                </label>
+                <textarea
+                  data-testid="adaptive-lab-input"
+                  rows={2}
+                  value={adaptiveLabInput}
+                  onChange={(e) => setAdaptiveLabInput(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  placeholder="Enter simulated caller input..."
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                    Safety State:
+                  </label>
+                  <select
+                    data-testid="adaptive-lab-safety-select"
+                    value={adaptiveLabSafety}
+                    onChange={(e) => setAdaptiveLabSafety(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="NONE">NONE (Normal)</option>
+                    <option value="ELEVATED">ELEVATED</option>
+                    <option value="HIGH">HIGH (Elevated Safety)</option>
+                    <option value="CRITICAL">CRITICAL (Threat Present)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                    Acoustic Quality:
+                  </label>
+                  <select
+                    data-testid="adaptive-lab-acoustic-select"
+                    value={adaptiveLabAcoustic}
+                    onChange={(e) => setAdaptiveLabAcoustic(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="EXCELLENT">EXCELLENT</option>
+                    <option value="GOOD">GOOD</option>
+                    <option value="DEGRADED">DEGRADED</option>
+                    <option value="POOR">POOR (Audio Degraded)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                    Language:
+                  </label>
+                  <select
+                    value={adaptiveLabLang}
+                    onChange={(e) => setAdaptiveLabLang(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="en-IN">en-IN (Indian English)</option>
+                    <option value="ta-IN">ta-IN (Tamil)</option>
+                    <option value="hi-IN">hi-IN (Hindi)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  SVI Score: <span className="text-emerald-300 font-mono font-bold">{adaptiveLabSvi}/100</span>
+                </label>
+                <input
+                  data-testid="adaptive-lab-svi-slider"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={adaptiveLabSvi}
+                  onChange={(e) => setAdaptiveLabSvi(Number(e.target.value))}
+                  className="w-full accent-emerald-500"
+                />
+              </div>
+            </div>
+
+            <button
+              data-testid="run-adaptive-eval"
+              disabled={isEvaluatingAdaptive}
+              onClick={async () => {
+                setIsEvaluatingAdaptive(true);
+                setAdaptiveLabResult(null);
+                try {
+                  const isCrit = adaptiveLabSafety === "CRITICAL";
+                  const isHigh = adaptiveLabSafety === "HIGH" || adaptiveLabSafety === "ELEVATED";
+                  const signals = isCrit
+                    ? [{ signal_type: "THREAT", severity: "CRITICAL", confidence: 0.99 }]
+                    : isHigh
+                    ? [{ signal_type: "DISTRESS", severity: "HIGH", confidence: 0.9 }]
+                    : [];
+
+                  const acousticSigs = adaptiveLabAcoustic === "POOR"
+                    ? [{ code: "DEGRADED_AUDIO_QUALITY", evidence: "Poor SNR", confidence: 0.95 }]
+                    : [];
+
+                  const res = await fetch(`${apiUrl}/v1/adaptive/plan`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      call_id: "sim-adaptive-lab",
+                      session_id: "sim-adaptive-sess",
+                      turn_index: 2,
+                      language: adaptiveLabLang,
+                      safety_state: adaptiveLabSafety,
+                      safety_signals: signals,
+                      svi_score: adaptiveLabSvi,
+                      svi_band: adaptiveLabSvi >= 76 ? "CRITICAL" : (adaptiveLabSvi >= 51 ? "HIGH" : (adaptiveLabSvi >= 26 ? "MODERATE" : "LOW")),
+                      svi_trend: "INITIAL",
+                      acoustic_quality: adaptiveLabAcoustic,
+                      acoustic_signals: acousticSigs,
+                      known_facts: {},
+                      last_caller_utterance: adaptiveLabInput,
+                    }),
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    setAdaptiveLabResult(data);
+                  }
+                } catch (e) {
+                  console.error("Error evaluating adaptive simulation:", e);
+                } finally {
+                  setIsEvaluatingAdaptive(false);
+                }
+              }}
+              className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-semibold text-xs transition-all shadow-md flex items-center justify-center gap-2"
+            >
+              {isEvaluatingAdaptive ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Evaluating Deterministic Policy...</span>
+                </>
+              ) : (
+                <>
+                  <Compass className="h-4 w-4" />
+                  <span>Run Adaptive Strategy Evaluation</span>
+                </>
+              )}
+            </button>
+
+            {/* Evaluation Results */}
+            {adaptiveLabResult && (
+              <div data-testid="adaptive-lab-result" className="mt-5 p-4 rounded-xl bg-slate-900 border border-emerald-800/60 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs px-3 py-1 rounded font-black tracking-wider bg-emerald-500 text-slate-950">
+                      {adaptiveLabResult.action}
+                    </span>
+                    <span className={`text-xs px-2.5 py-0.5 rounded font-black tracking-wider ${
+                      adaptiveLabResult.priority === "P0" ? "bg-rose-500 text-white animate-pulse"
+                      : adaptiveLabResult.priority === "P1" ? "bg-amber-500 text-slate-950"
+                      : adaptiveLabResult.priority === "P2" ? "bg-orange-500 text-white"
+                      : adaptiveLabResult.priority === "P3" ? "bg-blue-500 text-white"
+                      : "bg-emerald-600 text-white"
+                    }`}>
+                      {adaptiveLabResult.priority}
+                    </span>
+                    <span className="text-xs text-slate-300 font-mono">
+                      Target: {adaptiveLabResult.target_information_gap || "none"}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-400 font-mono">
+                    Conf: {Math.round((adaptiveLabResult.confidence ?? 1.0) * 100)}%
+                  </span>
+                </div>
+
+                {/* Reasons List */}
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 mb-1.5">
+                    Triggered Reason Codes
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(adaptiveLabResult.reason_codes || []).map((rc: string, i: number) => (
+                      <span key={i} className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700/60 text-emerald-200 text-xs font-semibold">
+                        {rc}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Fallback Template Text */}
+                {adaptiveLabResult.fallback_response_text && (
+                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                    <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1">
+                      Deterministic Surface Realization (Fallback):
+                    </div>
+                    <div className="text-xs text-emerald-200 italic">
+                      &quot;{adaptiveLabResult.fallback_response_text}&quot;
+                    </div>
+                  </div>
+                )}
+
+                {/* Non-Clinical Disclaimer */}
+                <div className="text-[10px] text-slate-500 italic border-t border-slate-800 pt-2">
+                  {adaptiveLabResult.disclaimer || "Deterministic conversational strategy layer. Surface realization bounded by safety rules. Non-clinical."}
                 </div>
               </div>
             )}

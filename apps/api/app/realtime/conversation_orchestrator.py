@@ -61,6 +61,10 @@ class ConversationOrchestrator:
         self.latest_acoustic: Optional[Any] = None
         self.acoustic_assessments: List[Any] = []
 
+        # Phase 7 Deterministic Adaptive Conversation Policy tracking
+        self.latest_adaptive_strategy: Optional[Any] = None
+        self.adaptive_strategies: List[Any] = []
+
         # Active turn & latency tracking
         self.active_latency = TurnLatency()
         self.last_completed_latency = TurnLatency()
@@ -351,6 +355,47 @@ class ConversationOrchestrator:
         except Exception as e:
             logger.error(f"Error in deterministic SVI evaluation for {self.session_id}: {e}")
 
+        # 7. Phase 7: Deterministic Adaptive Conversation Planning
+        try:
+            from app.adaptive.service import adaptive_engine
+            strategy = adaptive_engine.evaluate_turn(
+                call_id=self.call_id,
+                session_id=self.session_id,
+                turn_index=len(self.utterances),
+                utterance_text=event.text,
+                language=self.current_language.value,
+                safety_assessment=self.safety_assessments[-1] if self.safety_assessments else None,
+                svi_assessment=self.latest_svi,
+                acoustic_assessment=acoustic_assessment,
+            )
+            self.latest_adaptive_strategy = strategy
+            self.adaptive_strategies.append(strategy)
+
+            # Broadcast ADAPTIVE_STRATEGY_SELECTED event
+            self.broadcast(
+                "ADAPTIVE_STRATEGY_SELECTED",
+                {
+                    "call_id": self.call_id,
+                    "session_id": self.session_id,
+                    "turn_index": strategy.turn_index,
+                    "action": strategy.action.value,
+                    "priority": strategy.priority.value,
+                    "target_information": strategy.target_information,
+                    "reason_codes": [r.value for r in strategy.reason_codes],
+                    "evidence_refs": strategy.evidence_refs,
+                    "language": strategy.language,
+                    "confidence": strategy.confidence,
+                    "constraints": strategy.constraints,
+                    "requires_human_review": strategy.requires_human_review,
+                    "operator_override_active": strategy.operator_override_active,
+                    "fallback_applied": strategy.fallback_applied,
+                    "disclaimer": strategy.disclaimer,
+                    "evaluated_at": strategy.evaluated_at,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Error in adaptive planning for {self.session_id}: {e}")
+
         # If agent was speaking when final transcript landed, ensure interruption was performed
         if self.state == ConversationState.SPEAKING:
             self.interrupt(reason="final_transcript_barge_in")
@@ -367,17 +412,49 @@ class ConversationOrchestrator:
                 {"session_id": self.session_id, "call_id": self.call_id, "prompt": caller_utterance.text},
             )
 
-            # Build recent conversational message history
-            messages = [
-                {"role": "user" if u.speaker == TurnSpeaker.CALLER else "assistant", "content": u.text}
-                for u in self.utterances
-            ]
+            # Check if adaptive strategy calls for direct deterministic response template
+            strategy = self.latest_adaptive_strategy
+            response: Optional[ConversationalResponse] = None
 
-            # 1. Call LLM (Gemini or Mock)
-            response: ConversationalResponse = await self.llm.generate_conversational_response(
-                messages=messages,
-                language=self.current_language.value,
-            )
+            if strategy and strategy.action.value in ("ALLOW_SILENCE", "PAUSE_ADAPTIVE_QUESTIONS", "HUMAN_HANDOFF"):
+                from app.adaptive.templates import get_template
+                template_text = get_template(strategy.action, self.current_language.value)
+                response = ConversationalResponse(
+                    response_text=template_text,
+                    detected_intent=strategy.action.value,
+                    conversation_state="HUMAN_HANDOFF" if strategy.action.value == "HUMAN_HANDOFF" else "ENGAGED",
+                    next_action="HANDOFF" if strategy.action.value == "HUMAN_HANDOFF" else "CONTINUE",
+                    language=self.current_language.value,
+                    confidence=1.0,
+                    safety_flag=strategy.requires_human_review,
+                )
+            else:
+                # Build recent conversational message history
+                messages = [
+                    {"role": "user" if u.speaker == TurnSpeaker.CALLER else "assistant", "content": u.text}
+                    for u in self.utterances
+                ]
+
+                # 1. Call LLM (Gemini or Mock)
+                response = await self.llm.generate_conversational_response(
+                    messages=messages,
+                    language=self.current_language.value,
+                )
+
+                # Validate response against Adaptive Response Policy
+                if strategy:
+                    from app.adaptive.validator import ResponseValidator
+                    is_valid, reason, validated_text = ResponseValidator.validate_response(
+                        response.response_text, strategy
+                    )
+                    if not is_valid:
+                        logger.warning(
+                            f"Response validation failed for {self.session_id}: {reason}. "
+                            "Applying deterministic fallback template."
+                        )
+                        response.response_text = validated_text
+                        strategy.fallback_applied = True
+
             self.active_latency.llm_response_at = time.time()
 
             agent_utterance = Utterance(

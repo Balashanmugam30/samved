@@ -63,7 +63,7 @@ Returns a fully attributed `AcousticAssessment` containing operational signals (
 
 ---
 
-## 3. Testing Realtime Console UI
+## 3. Testing Realtime Console UI (Phases 3–6)
 
 1. Open `http://localhost:3000/calls` in your browser.
 2. Observe active and completed calls in the left panel.
@@ -74,3 +74,56 @@ Returns a fully attributed `AcousticAssessment` containing operational signals (
 4. Click **Acoustic Lab** in the top navigation bar to open the interactive simulation modal:
    - Select presets (e.g. *Acute Agitation*, *Flat Affect / Withdrawal*, *Line Degradation / Clipping*).
    - Adjust sliders in realtime and click **Evaluate Acoustics** to inspect live engine response.
+
+---
+
+## 4. Verifying Phase 7 Adaptive Conversation Engine
+
+### 4.1 Engine Status & Policy Catalog
+```bash
+curl http://localhost:8000/v1/adaptive/status
+curl http://localhost:8000/v1/adaptive/policy
+```
+Confirms operational readiness, strict safety precedence (P0 > P1 > P2 > P3 > P4 > P5), and active policy rules.
+
+### 4.2 Standalone Adaptive Planning Simulation
+```bash
+curl -X POST http://localhost:8000/v1/adaptive/plan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "call_id": "sim-test-01",
+    "session_id": "sim-sess-01",
+    "turn_index": 2,
+    "language": "ta-IN",
+    "safety_state": "CRITICAL",
+    "safety_signals": [{"signal_type": "THREAT", "severity": "CRITICAL", "confidence": 0.99}],
+    "svi_score": 85,
+    "svi_band": "CRITICAL",
+    "svi_trend": "INITIAL",
+    "acoustic_quality": "GOOD",
+    "acoustic_signals": [],
+    "known_facts": {},
+    "last_caller_utterance": "He is right outside, please help"
+  }'
+```
+Returns deterministic strategy (`SAFETY_CHECK`, `P0`, `immediate_danger_clarification`, reason `CRITICAL_THREAT_PRESENT`).
+
+### 4.3 Operator Overrides via REST
+```bash
+curl -X POST http://localhost:8000/v1/adaptive/calls/CALL_ID/override \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "operator_force_human",
+    "reason": "Counselor manual escalation"
+  }'
+```
+
+### 4.4 Console UI Testing
+1. In `http://localhost:3000/calls`, select a call.
+2. Locate the **Adaptive Policy Panel**:
+   - Strategy badge (`ASK_SUPPORT`, `SAFETY_CHECK`, `HUMAN_HANDOFF`), priority badge (`P0`–`P5`), target information gap, confidence score, and deterministic reason chips.
+   - Quick operator override buttons: **Force Human**, **Pause Questions**, **Safety Check**.
+3. Click **Adaptive Lab** in the header toolbar:
+   - Select presets (*Critical Threat*, *High Vulnerability*, *Degraded Audio*, *Human Request*, *Caller Refusal*, *Closure Ready*).
+   - Click **Run Adaptive Strategy Evaluation** to inspect live deterministic strategy outputs and fallback responses.
+

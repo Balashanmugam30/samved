@@ -25,6 +25,9 @@ class EventType(str, Enum):
     RISK_UPDATED = "RISK_UPDATED"
     SVI_UPDATED = "SVI_UPDATED"
 
+    # Adaptive conversation policy (Phase 7)
+    ADAPTIVE_STRATEGY_SELECTED = "ADAPTIVE_STRATEGY_SELECTED"
+
     # Multi-agent & AI response
     AGENT_ACTION = "AGENT_ACTION"
     AI_THINKING = "AI_THINKING"
@@ -129,4 +132,28 @@ class AcousticUpdatePayload(BaseModel):
         "diagnostic, lie-detection, credibility, or psychological state classifier."
     )
     is_supporting_signal: bool = True
+
+
+class AdaptiveStrategySelectedPayload(BaseModel):
+    call_id: str
+    session_id: str
+    turn_index: int = 0
+    action: str
+    priority: str
+    target_information: str
+    reason_codes: List[str] = Field(default_factory=list)
+    evidence_refs: List[str] = Field(default_factory=list)
+    language: str = "en-IN"
+    confidence: float = 1.0
+    constraints: List[str] = Field(default_factory=list)
+    requires_human_review: bool = False
+    operator_override_active: bool = False
+    fallback_applied: bool = False
+    disclaimer: str = (
+        "Adaptive Conversation is an operational conversational planning layer. It is not a clinical, "
+        "medical, diagnostic, legal, credibility, lie-detection, or autonomous emergency-dispatch system."
+    )
+    evaluated_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 

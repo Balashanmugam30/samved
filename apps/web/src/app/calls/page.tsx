@@ -564,6 +564,25 @@ export default function OperatorCallsPage() {
         setSafetyState("NONE");
         setSafetySignals([]);
       }
+
+      // Phase 5 SVI Snapshot
+      try {
+        const sviRes = await fetch(`${apiUrl}/v1/svi/calls/${callId}`);
+        if (sviRes.ok) {
+          const sviData = await sviRes.json();
+          setSviScore(sviData.score ?? 0);
+          setSviBand(sviData.band || "LOW");
+          setSviTrend(sviData.trend || "INITIAL");
+          setSviDelta(sviData.delta ?? 0);
+          setSviCompleteness(sviData.assessment_completeness ?? 0);
+          setSviTopContributors(sviData.top_contributors || []);
+          setSviProtectiveReduction(sviData.protective_factor_reduction ?? 0);
+          setSviCriticalOverride(Boolean(sviData.critical_override_applied));
+          setSviRequiresHumanReview(Boolean(sviData.requires_human_review));
+        }
+      } catch (e) {
+        console.error("Error loading SVI snapshot:", e);
+      }
     } catch (err) {
       console.error("Error loading call snapshot:", err);
     }
@@ -901,6 +920,7 @@ export default function OperatorCallsPage() {
                 return (
                   <div
                     key={call.call_id}
+                    data-testid="call-item"
                     onClick={() => selectCall(call.call_id)}
                     className={`p-3 rounded-lg border cursor-pointer transition-all ${
                       isSelected

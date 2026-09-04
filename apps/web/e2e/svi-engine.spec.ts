@@ -125,6 +125,10 @@ test.describe("SAMVED Phase 5 SVI Engine E2E", () => {
     await setupMockCall(page);
     await page.goto("/calls");
 
+    // Click call card to select it
+    await page.getByTestId("call-item").first().waitFor({ state: "visible", timeout: 10000 });
+    await page.getByTestId("call-item").first().click({ force: true });
+
     // 1. Verify SVI panel exists
     const sviPanel = page.getByTestId("svi-panel");
     await expect(sviPanel).toBeVisible({ timeout: 10000 });
@@ -271,6 +275,10 @@ test.describe("SAMVED Phase 5 SVI Engine E2E", () => {
   test("SVI panel shows NOT clinical disclaimer", async ({ page }) => {
     await setupMockCall(page);
     await page.goto("/calls");
+
+    // Click call card to select it
+    await page.getByTestId("call-item").first().waitFor({ state: "visible", timeout: 10000 });
+    await page.getByTestId("call-item").first().click({ force: true });
 
     const sviPanel = page.getByTestId("svi-panel");
     await expect(sviPanel).toBeVisible({ timeout: 10000 });

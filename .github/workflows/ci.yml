@@ -87,7 +87,7 @@ jobs:
         run: pnpm install
 
       - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+        run: pnpm --filter @samved/web exec playwright install --with-deps chromium
 
       - name: Build Web Application
         run: pnpm build

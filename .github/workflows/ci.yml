@@ -89,6 +89,36 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm --filter @samved/web exec playwright install --with-deps chromium
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install Python Dependencies
+        run: |
+          uv venv
+          uv pip install -r requirements.txt
+        working-directory: apps/api
+
+      - name: Start SAMVED API Backend
+        run: uv run python -m uvicorn app.main:app --port 8000 &
+        working-directory: apps/api
+
+      - name: Wait for API Readiness
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/health > /dev/null; then
+              echo "SAMVED API is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "SAMVED API failed to start in time"
+          exit 1
+
       - name: Build Web Application
         run: pnpm build
 

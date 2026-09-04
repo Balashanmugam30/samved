@@ -8,6 +8,7 @@ router = APIRouter(tags=["Health & Status"])
 
 
 @router.get("/health", status_code=status.HTTP_200_OK)
+@router.get("/healthz", status_code=status.HTTP_200_OK)
 async def health_check() -> Dict[str, Any]:
     """Liveness check: returns 200 if the process is responsive."""
     return {

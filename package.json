@@ -8,7 +8,7 @@
     "dev:api": "uv run python -m uvicorn app.main:app --app-dir apps/api --reload --port 8000",
     "build": "pnpm --recursive run build",
     "type-check": "pnpm --recursive run type-check",
-    "test:backend": "uv run pytest apps/api/tests -v",
+    "test:backend": "uv --directory apps/api run pytest -v",
     "test:e2e": "pnpm --filter @samved/web test:e2e"
   },
   "devDependencies": {

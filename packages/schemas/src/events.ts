@@ -1,0 +1,127 @@
+/**
+ * SAMVED Event Envelope & Taxonomy Contract (v1.0)
+ * Canonical event definitions for Realtime WebSocket and internal streaming.
+ */
+
+export const SCHEMA_VERSION = "1.0";
+
+export enum EventType {
+  // Telephony lifecycle
+  CALL_STARTED = "CALL_STARTED",
+  CALL_CONNECTED = "CALL_CONNECTED",
+  CALL_ENDED = "CALL_ENDED",
+
+  // Language & speech
+  LANGUAGE_DETECTED = "LANGUAGE_DETECTED",
+  LANGUAGE_CHANGED = "LANGUAGE_CHANGED",
+  TRANSCRIPT_PARTIAL = "TRANSCRIPT_PARTIAL",
+  TRANSCRIPT_FINAL = "TRANSCRIPT_FINAL",
+  ACOUSTIC_UPDATE = "ACOUSTIC_UPDATE",
+
+  // Safety & risk
+  SAFETY_SIGNAL = "SAFETY_SIGNAL",
+  RISK_UPDATED = "RISK_UPDATED",
+  SVI_UPDATED = "SVI_UPDATED",
+
+  // Multi-agent & AI response
+  AGENT_ACTION = "AGENT_ACTION",
+  AI_RESPONSE_STARTED = "AI_RESPONSE_STARTED",
+  AI_RESPONSE_ENDED = "AI_RESPONSE_ENDED",
+
+  // Escalation & human oversight
+  HUMAN_ALERT = "HUMAN_ALERT",
+  ESCALATION_RECOMMENDED = "ESCALATION_RECOMMENDED",
+  ESCALATION_ACCEPTED = "ESCALATION_ACCEPTED",
+  ESCALATION_OVERRIDDEN = "ESCALATION_OVERRIDDEN",
+
+  // Case & follow-up
+  CASE_CREATED = "CASE_CREATED",
+  FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED",
+
+  // Heartbeat / ping-pong
+  HEARTBEAT_PING = "HEARTBEAT_PING",
+  HEARTBEAT_PONG = "HEARTBEAT_PONG"
+}
+
+export interface EventEnvelope<T = Record<string, unknown>> {
+  event_id: string;
+  event_type: EventType;
+  schema_version: string;
+  timestamp: string; // ISO-8601 UTC
+  session_id: string;
+  call_id: string;
+  case_id?: string | null;
+  payload: T;
+}
+
+// Payload definitions
+export interface CallStartedPayload {
+  caller_channel: "exotel" | "twilio" | "simulation" | "dev";
+  initiated_at: string;
+}
+
+export interface CallConnectedPayload {
+  telephony_call_id: string;
+  connected_at: string;
+}
+
+export interface CallEndedPayload {
+  duration_seconds: number;
+  disconnect_reason: "caller_hangup" | "agent_transfer" | "timeout" | "error";
+  ended_at: string;
+}
+
+export interface TranscriptPayload {
+  speaker: "caller" | "agent" | "system";
+  text: string;
+  confidence: number;
+  is_final: boolean;
+  language: string;
+  start_time_ms: number;
+  end_time_ms: number;
+}
+
+export interface AcousticUpdatePayload {
+  pitch_hz?: number;
+  speaking_rate_wpm?: number;
+  pause_ratio?: number;
+  energy_rms?: number;
+  jitter?: number;
+  shimmer?: number;
+  is_supporting_signal: true; // Explicitly marked as non-diagnostic
+}
+
+export interface SafetySignalPayload {
+  signal_type: "IMMEDIATE_DANGER" | "ONGOING_VIOLENCE" | "SELF_HARM" | "UNSAFE_ENVIRONMENT" | "PERPETRATOR_PROXIMITY";
+  triggered_by: "deterministic_rule" | "acoustic_pattern" | "keyword_match";
+  severity: "CRITICAL" | "HIGH" | "MODERATE";
+  description: string;
+  requires_human_confirmation: boolean;
+}
+
+export enum SVIBand {
+  LOW = "LOW",             // 0–25
+  MODERATE = "MODERATE",   // 26–50
+  HIGH = "HIGH",           // 51–75
+  CRITICAL = "CRITICAL"    // 76–100
+}
+
+export interface SVIUpdatedPayload {
+  score: number; // 0 to 100
+  band: SVIBand;
+  confidence: number;
+  contributing_factors: Array<{
+    factor: string;
+    weight: number;
+    evidence: string;
+  }>;
+  is_clinical_diagnosis: false; // Explicit architectural guarantee
+}
+
+export interface HumanAlertPayload {
+  alert_id: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  title: string;
+  message: string;
+  action_required: boolean;
+}

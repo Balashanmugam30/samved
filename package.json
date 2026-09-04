@@ -1,0 +1,19 @@
+{
+  "name": "samved-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SAMVED: AI-assisted multilingual victim triage and response intelligence for NHAA 14566",
+  "scripts": {
+    "dev:web": "pnpm --filter @samved/web dev",
+    "dev:api": "uv run python -m uvicorn app.main:app --app-dir apps/api --reload --port 8000",
+    "build": "pnpm --recursive run build",
+    "type-check": "pnpm --recursive run type-check",
+    "test:backend": "uv run pytest apps/api/tests -v",
+    "test:e2e": "pnpm --filter @samved/web test:e2e"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.0",
+    "typescript": "^5.8.0"
+  },
+  "packageManager": "pnpm@10.20.0"
+}

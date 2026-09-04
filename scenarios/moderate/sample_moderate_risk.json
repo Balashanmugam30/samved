@@ -1,0 +1,21 @@
+{
+  "scenario_id": "SCEN-MOD-001",
+  "is_synthetic": true,
+  "description": "Caller expressing personal difficulty reducing alcohol consumption and feeling anxious about employment.",
+  "language": "hi-IN",
+  "expected_svi_band": "MODERATE",
+  "expected_score_range": [30, 45],
+  "expected_safety_triggers": [],
+  "synthetic_dialogue": [
+    {
+      "turn": 1,
+      "speaker": "caller",
+      "text": "Main pichle kuch mahino se bohot pareshan hoon. Sharaab chhodne ki koshish karta hoon lekin neend nahi aati aur kaam par dikkat hoti hai."
+    },
+    {
+      "turn": 2,
+      "speaker": "agent",
+      "text": "Aapki pareshani samajh sakta hoon. Yeh bohot himmat ki baat hai ki aapne helpline par sampark kiya. Hamare tele-counselor aapko withdrawal management aur counseling ke baare me margdarshan denge."
+    }
+  ]
+}

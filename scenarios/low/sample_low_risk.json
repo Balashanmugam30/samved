@@ -1,0 +1,21 @@
+{
+  "scenario_id": "SCEN-LOW-001",
+  "is_synthetic": true,
+  "description": "Caller asking for general information regarding nearest government de-addiction facility for a family member.",
+  "language": "hi-IN",
+  "expected_svi_band": "LOW",
+  "expected_score_range": [5, 20],
+  "expected_safety_triggers": [],
+  "synthetic_dialogue": [
+    {
+      "turn": 1,
+      "speaker": "caller",
+      "text": "Namaste, mujhe mere bhai ke liye de-addiction center ki jankari chahiye jo Jaipur me ho."
+    },
+    {
+      "turn": 2,
+      "speaker": "agent",
+      "text": "Namaste. Main aapki madad kar sakta hoon. Jaipur me sarkaari aur anudaanit IRCA centres uplabdh hain. Kya aapko pata hai ki unhe kis vishay me sahayata chahiye?"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "scenario_id": "SCEN-HIGH-001",
+  "is_synthetic": true,
+  "description": "Caller undergoing severe opioid withdrawal symptoms with unstable housing and intense physical distress.",
+  "language": "hi-IN",
+  "expected_svi_band": "HIGH",
+  "expected_score_range": [55, 70],
+  "expected_safety_triggers": ["ACUTE_WITHDRAWAL", "UNSTABLE_HOUSING"],
+  "synthetic_dialogue": [
+    {
+      "turn": 1,
+      "speaker": "caller",
+      "text": "Mujhe bohot tezz shareer me dard ho raha hai, do din se kuch nahi liya. Ghar waalon ne nikaal diya hai, mujhe samajh nahi aa raha main kahan jaun."
+    },
+    {
+      "turn": 2,
+      "speaker": "agent",
+      "text": "Aap bilkul mat ghabraiye, hum aapke saath hain. Main abhi aapko medical detoxification aur aashray sthal ke liye medical team se connect kar raha hoon. Kripya line par bane rahein."
+    }
+  ]
+}

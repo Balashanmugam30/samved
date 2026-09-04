@@ -1,0 +1,95 @@
+name: SAMVED CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  backend-checks:
+    name: Backend Unit & Contract Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Python Dependencies
+        run: |
+          uv venv
+          uv pip install -r requirements.txt
+
+      - name: Run Pytest Suite
+        run: uv run pytest -v
+
+  frontend-checks:
+    name: Frontend Type Check & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+
+      - name: Install Node Dependencies
+        run: pnpm install
+
+      - name: Type Check Packages
+        run: pnpm type-check
+
+      - name: Build Web Application
+        run: pnpm build
+
+  playwright-e2e:
+    name: Playwright Browser Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [backend-checks, frontend-checks]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+
+      - name: Install Node Dependencies
+        run: pnpm install
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright Smoke Tests
+        run: pnpm test:e2e
+        env:
+          CI: true

@@ -696,7 +696,7 @@ export default function OperatorCallsPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Top Header Bar */}
-      <header className="h-14 border-b border-slate-800 px-6 flex items-center justify-between bg-slate-900/60 backdrop-blur shrink-0">
+      <header className="min-h-14 border-b border-slate-800 px-4 md:px-6 flex items-center justify-between gap-3 bg-slate-900/60 backdrop-blur shrink-0 overflow-x-auto">
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
             <Radio className="h-4 w-4 animate-pulse" />

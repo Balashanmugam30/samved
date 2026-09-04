@@ -1,0 +1,151 @@
+{
+  "version": "v1",
+  "name": "SAMVED Explainable SVI Scoring Model",
+  "description": "Deterministic operational prioritization weights for NHAA 14566 crisis triage",
+  "disclaimer": "Operational Prototype Priority Indicator — NOT a clinical, medical, or diagnostic score",
+  "bands": {
+    "LOW": { "min": 0, "max": 25, "description": "Routine support, informational, stable" },
+    "MODERATE": { "min": 26, "max": 50, "description": "Elevated distress, emerging difficulties, non-lethal" },
+    "HIGH": { "min": 51, "max": 75, "description": "Severe distress, acute coercion, significant barriers (operator review mandated)" },
+    "CRITICAL": { "min": 76, "max": 100, "description": "Active violence, lethal weapons, acute life danger (critical floor override)" }
+  },
+  "recency_multipliers": {
+    "PRESENT": 1.0,
+    "RECENT": 0.75,
+    "HISTORICAL": 0.35
+  },
+  "trend_threshold": 5,
+  "thresholds": {
+    "critical_override_floor": 76,
+    "high_override_floor": 51,
+    "max_protective_reduction": 15
+  },
+  "categories": {
+    "immediate_safety": {
+      "max_weight": 40,
+      "description": "Active violence, lethal weapons, acute bodily threats",
+      "severity_weights": {
+        "CRITICAL": 40,
+        "HIGH": 25,
+        "MODERATE": 15,
+        "LOW": 5
+      }
+    },
+    "coercion_control": {
+      "max_weight": 25,
+      "base_match_weight": 12,
+      "description": "Confinement, surveillance, movement restriction, threat-based coercion",
+      "keywords": {
+        "en-IN": [
+          "locked me", "locked inside", "locked in room", "locked up",
+          "takes my phone", "took my phone", "seized my phone",
+          "won't let me go", "wont let me leave", "not allowed to leave",
+          "controls my money", "won't give me money",
+          "tracking me", "watching me", "following me",
+          "trapped", "held against my will"
+        ],
+        "ta-IN": [
+          "பூட்டி வச்சிருக்காங்க", "பூட்டி", "வெளியே விட மாட்டாங்க", "வெளில போக விடல",
+          "போனை பிடுங்கிட்டாங்க", "போன் குடுக்க மாட்டாங்க",
+          "காசு தர மாட்டாங்க", "கண்காணிக்கிறாங்க",
+          "pootti", "veliye vida maattanga", "phone pudungittanga", "kaasu thara maattanga"
+        ],
+        "hi-IN": [
+          "कमरे में बंद", "बंद कर दिया", "ताले में बंद",
+          "बाहर नहीं जाने देते", "जाने नहीं देते",
+          "फ़ोन छीन लिया", "फोन छीन लिया",
+          "पैसे नहीं देते", "नज़र रखते हैं",
+          "band kar diya", "bahar nahi jaane dete", "phone cheen liya"
+        ]
+      }
+    },
+    "isolation_support": {
+      "max_weight": 15,
+      "base_match_weight": 8,
+      "description": "Absence of trusted support, isolated location, blocked family access",
+      "keywords": {
+        "en-IN": [
+          "no one to help", "all alone", "nobody here", "no family",
+          "isolated", "remote place", "far away from town", "no friends",
+          "no one can reach me", "nobody knows where i am"
+        ],
+        "ta-IN": [
+          "யாரும் இல்ல", "தனியா இருக்கேன்", "உதவிக்கு ஆள் இல்ல",
+          "குடும்பம் தூரம்", "யாருமே கிடையாது", "தனிமையில் இருக்கேன்",
+          "yaarume illa", "thaniya irukken", "udhavikku aal illa"
+        ],
+        "hi-IN": [
+          "कोई नहीं है", "बिल्कुल अकेली", "अकेली हूँ", "अकेला हूँ",
+          "मदद के लिए कोई नहीं", "कोई रिश्तेदार नहीं", "दूर गाँव में",
+          "koi nahi hai", "akeli hoon", "madad ke liye koi nahi"
+        ]
+      }
+    },
+    "distress_overwhelm": {
+      "max_weight": 20,
+      "base_match_weight": 10,
+      "description": "Explicit panic, acute distress, feeling helpless, unable to cope",
+      "keywords": {
+        "en-IN": [
+          "cannot breathe", "panicking", "extremely scared", "terrified",
+          "shaking", "crying non stop", "cannot take it anymore", "helpless",
+          "losing my mind", "so afraid", "feel so lost"
+        ],
+        "ta-IN": [
+          "ரொம்ப பயமா இருக்கு", "தாங்க முடியல", "நடுக்கமா இருக்கு",
+          "அழுதுட்டே இருக்கேன்", "கையாலாகல", "பயத்துல இருக்கேன்",
+          "romba bayama irukku", "thaanga mudiyala", "nadukkama irukku"
+        ],
+        "hi-IN": [
+          "बहुत डर लग रहा है", "सहन नहीं हो रहा", "कांप रही हूँ",
+          "कांप रहा हूँ", "रोते जा रही हूँ", "बेबस हूँ", "बहुत घबराहट",
+          "bahut dar lag raha hai", "sahan nahi ho raha", "bebas hoon"
+        ]
+      }
+    },
+    "help_barriers": {
+      "max_weight": 15,
+      "base_match_weight": 8,
+      "description": "Inability to leave, monitored phone, lack of transportation, no safe shelter",
+      "keywords": {
+        "en-IN": [
+          "cannot leave", "no money to travel", "no transport", "nowhere to go",
+          "phone might be checked", "will catch me if i run", "nowhere safe",
+          "no vehicle", "no bus"
+        ],
+        "ta-IN": [
+          "போக இடம் இல்ல", "காசு இல்ல", "வண்டி இல்ல",
+          "ஓட முடியாது", "பார்த்துடுவாங்க", "தங்க இடம் இல்ல",
+          "poga idam illa", "kaasu illa", "vandi illa"
+        ],
+        "hi-IN": [
+          "जाने की कोई जगह नहीं", "किराया नहीं है", "गाड़ी नहीं है",
+          "भाग नहीं सकती", "पकड़ लेंगे", "रहने की जगह नहीं",
+          "jaane ki koi jagah nahi", "bhag nahi sakti", "gaadi nahi hai"
+        ]
+      }
+    },
+    "protective_factors": {
+      "max_reduction": 15,
+      "base_match_weight": 8,
+      "description": "Safe space, trusted neighbor/family nearby, secured perimeter, safe transport",
+      "keywords": {
+        "en-IN": [
+          "safe now", "safe place", "neighbor is here", "police is here",
+          "mother is with me", "with my friend", "door is locked safely",
+          "at my parents home", "safe with relatives", "in a safe room"
+        ],
+        "ta-IN": [
+          "இப்போ பாதுகாப்பா இருக்கேன்", "பக்கத்து வீட்டுக்காரங்க இருக்காங்க",
+          "அம்மா கூட இருக்காங்க", "பாதுகாப்பான இடம்", "நண்பர் வீட்டில்",
+          "paadhugaappa irukken", "amma kooda irukkanga"
+        ],
+        "hi-IN": [
+          "अब सुरक्षित हूँ", "पड़ोसी साथ हैं", "माँ साथ में हैं",
+          "सुरक्षित जगह पर हूँ", "दोस्त के घर", "कमरा सुरक्षित है",
+          "surakshit hoon", "maa saath hai", "surakshit jagah"
+        ]
+      }
+    }
+  }
+}

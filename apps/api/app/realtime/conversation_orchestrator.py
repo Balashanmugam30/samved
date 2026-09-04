@@ -53,6 +53,10 @@ class ConversationOrchestrator:
         self.fired_safety_signals: Set[str] = set()
         self.safety_assessments: List[Any] = []
 
+        # Phase 5 Deterministic SVI Engine tracking
+        self.latest_svi: Optional[Any] = None
+        self.svi_assessments: List[Any] = []
+
         # Active turn & latency tracking
         self.active_latency = TurnLatency()
         self.last_completed_latency = TurnLatency()
@@ -233,6 +237,63 @@ class ConversationOrchestrator:
                 )
         except Exception as e:
             logger.error(f"Error in deterministic safety evaluation for {self.session_id}: {e}")
+
+        # 5. Phase 5: Deterministic SVI Evaluation
+        try:
+            from app.services.svi_engine import svi_engine
+            turns_data = [
+                {
+                    "speaker": u.speaker.value if hasattr(u.speaker, "value") else str(u.speaker),
+                    "text": u.text,
+                    "language": u.language.value if hasattr(u.language, "value") else str(u.language),
+                }
+                for u in self.utterances
+            ]
+            all_signals = [sig for sa in self.safety_assessments for sig in sa.signals]
+            prev_score = self.latest_svi.score if self.latest_svi else None
+            svi_assessment = svi_engine.evaluate_session(
+                call_id=self.call_id,
+                session_id=self.session_id,
+                turns=turns_data,
+                safety_signals=all_signals,
+                previous_score=prev_score,
+                turn_index=len(self.utterances),
+            )
+            self.latest_svi = svi_assessment
+            self.svi_assessments.append(svi_assessment)
+
+            # Broadcast SVI_UPDATED event
+            self.broadcast(
+                "SVI_UPDATED",
+                {
+                    "call_id": self.call_id,
+                    "session_id": self.session_id,
+                    "score": svi_assessment.score,
+                    "band": svi_assessment.band.value,
+                    "trend": svi_assessment.trend.value,
+                    "delta": svi_assessment.delta,
+                    "confidence": 1.0,
+                    "assessment_completeness": svi_assessment.assessment_completeness,
+                    "top_contributors": svi_assessment.top_contributors,
+                    "contributing_factors": [
+                        {
+                            "factor": f.feature_name,
+                            "weight": f.weighted_score,
+                            "evidence": f.matched_phrase or f.description,
+                        }
+                        for f in svi_assessment.features
+                    ],
+                    "protective_factor_reduction": svi_assessment.protective_factor_reduction,
+                    "critical_override_applied": svi_assessment.critical_override_applied,
+                    "requires_human_review": svi_assessment.requires_human_review,
+                    "acoustic_evidence_note": svi_assessment.acoustic_evidence_note,
+                    "is_clinical_diagnosis": False,
+                    "disclaimer": svi_assessment.disclaimer,
+                    "evaluated_at": svi_assessment.evaluated_at,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Error in deterministic SVI evaluation for {self.session_id}: {e}")
 
         # If agent was speaking when final transcript landed, ensure interruption was performed
         if self.state == ConversationState.SPEAKING:

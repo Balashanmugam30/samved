@@ -71,6 +71,10 @@ class TelephonySession:
         self.saved_safety_state: str = "NONE"
         self.saved_safety_signals: List[Dict[str, Any]] = []
 
+        # Phase 5 Deterministic SVI Assessments
+        self.svi_history: List[Dict[str, Any]] = []
+        self.latest_svi: Optional[Dict[str, Any]] = None
+
         # Metrics and sequence validation
         self.last_sequence_number: int = 0
         self.inbound_frames_count: int = 0
@@ -102,8 +106,26 @@ class TelephonySession:
                     # Prevent duplicates by signal_id
                     if not any(s.get("signal_id") == sig_payload.get("signal_id") for s in self.active_safety_signals):
                         self.active_safety_signals.append(sig_payload)
+                elif "SVI_UPDATED" in ev_type_str:
+                    svi_payload = dumped.get("payload", {})
+                    self.latest_svi = svi_payload
+                    self.svi_history.append(svi_payload)
         except Exception as e:
             logger.error(f"Error recording event in session {self.session_id}: {e}")
+
+    def record_svi_assessment(self, assessment: Any) -> None:
+        """Stores SVI assessment in session history."""
+        dumped = assessment.model_dump() if hasattr(assessment, "model_dump") else assessment
+        self.latest_svi = dumped
+        self.svi_history.append(dumped)
+
+    def get_latest_svi(self) -> Optional[Dict[str, Any]]:
+        """Returns latest SVI assessment dictionary."""
+        return self.latest_svi
+
+    def get_svi_history(self) -> List[Dict[str, Any]]:
+        """Returns complete SVI assessment history list."""
+        return list(self.svi_history)
 
     def acknowledge_signal(self, signal_id: str, acknowledged_by: str = "operator") -> Optional[Dict[str, Any]]:
         """Records operator acknowledgment on an active safety signal."""
@@ -157,6 +179,9 @@ class TelephonySession:
         safety_state = self.orchestrator.current_safety_state if self.orchestrator else getattr(self, "saved_safety_state", "NONE")
         utts = self.get_utterances()
 
+        latest_svi_score = self.latest_svi.get("score") if self.latest_svi else None
+        latest_svi_band = self.latest_svi.get("band") if self.latest_svi else "LOW"
+
         return {
             "session_id": self.session_id,
             "call_id": self.call_id,
@@ -174,6 +199,9 @@ class TelephonySession:
             "safety_state": safety_state,
             "safety_signals": list(self.active_safety_signals),
             "safety_signals_count": len(self.active_safety_signals),
+            "svi_score": latest_svi_score,
+            "svi_band": latest_svi_band,
+            "latest_svi": self.latest_svi,
             "utterances_count": len(utts),
             "events_count": len(self.event_history),
             "is_active": self.state_machine.is_active,
@@ -411,6 +439,8 @@ class RealtimeSessionManager:
             summary["utterances"] = list(session.saved_utterances)
             summary["safety_signals"] = list(session.saved_safety_signals)
             summary["safety_state"] = session.saved_safety_state
+            summary["latest_svi"] = session.get_latest_svi()
+            summary["svi_history"] = session.get_svi_history()
             self._recent_sessions.appendleft(summary)
             self._recent_calls_map[session.call_id] = summary
             if len(self._recent_calls_map) > 100:
@@ -501,6 +531,32 @@ class RealtimeSessionManager:
                 "safety_signals_count": len(c.get("safety_signals", [])),
                 "assessments": [],
             }
+        return None
+
+    async def get_call_svi(self, call_id: str) -> Optional[Dict[str, Any]]:
+        """Returns latest SVI assessment for active or completed call."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            latest = sess.get_latest_svi()
+            if not latest and sess.orchestrator and getattr(sess.orchestrator, "latest_svi", None):
+                latest = sess.orchestrator.latest_svi.model_dump()
+            return latest
+        if call_id in self._recent_calls_map:
+            c = self._recent_calls_map[call_id]
+            return c.get("latest_svi")
+        return None
+
+    async def get_call_svi_history(self, call_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Returns complete SVI assessment history for active or completed call."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            hist = sess.get_svi_history()
+            if not hist and sess.orchestrator and getattr(sess.orchestrator, "svi_assessments", None):
+                hist = [a.model_dump() for a in sess.orchestrator.svi_assessments]
+            return hist
+        if call_id in self._recent_calls_map:
+            c = self._recent_calls_map[call_id]
+            return c.get("svi_history", [])
         return None
 
     async def acknowledge_call_signal(

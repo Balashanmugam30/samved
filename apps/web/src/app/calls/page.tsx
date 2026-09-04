@@ -214,6 +214,23 @@ export default function OperatorCallsPage() {
   const [safetyLabResult, setSafetyLabResult] = useState<any>(null);
   const [isEvaluatingSafety, setIsEvaluatingSafety] = useState<boolean>(false);
 
+  // Phase 5 SVI Engine State
+  const [sviScore, setSviScore] = useState<number | null>(null);
+  const [sviBand, setSviBand] = useState<string>("LOW");
+  const [sviTrend, setSviTrend] = useState<string>("INITIAL");
+  const [sviDelta, setSviDelta] = useState<number>(0);
+  const [sviCompleteness, setSviCompleteness] = useState<number>(0);
+  const [sviTopContributors, setSviTopContributors] = useState<string[]>([]);
+  const [sviProtectiveReduction, setSviProtectiveReduction] = useState<number>(0);
+  const [sviCriticalOverride, setSviCriticalOverride] = useState<boolean>(false);
+  const [sviRequiresHumanReview, setSviRequiresHumanReview] = useState<boolean>(false);
+  const [sviHistory, setSviHistory] = useState<Array<{ score: number; band: string; evaluated_at: string }>>([]);
+  const [isSviLabOpen, setIsSviLabOpen] = useState<boolean>(false);
+  const [sviLabInput, setSviLabInput] = useState<string>("He locked me inside the room and took my phone. I am panicking and extremely scared.");
+  const [sviLabLang, setSviLabLang] = useState<string>("en-IN");
+  const [sviLabResult, setSviLabResult] = useState<any>(null);
+  const [isEvaluatingSvi, setIsEvaluatingSvi] = useState<boolean>(false);
+
   // UI Modals & Filters
   const [eventFilter, setEventFilter] = useState<EventFilterCategory>("ALL");
   const [inspectedEvent, setInspectedEvent] = useState<EventEnvelope | null>(null);
@@ -436,6 +453,25 @@ export default function OperatorCallsPage() {
             tts_ms: Number(payload.tts_ms || 0),
             total_ms: Number(payload.total_turn_ms || 0),
           });
+          break;
+
+        case EventType.SVI_UPDATED:
+          if (payload) {
+            const score = Number(payload.score ?? 0);
+            setSviScore(score);
+            setSviBand(String(payload.band || "LOW"));
+            setSviTrend(String(payload.trend || "INITIAL"));
+            setSviDelta(Number(payload.delta ?? 0));
+            setSviCompleteness(Number(payload.assessment_completeness ?? 0));
+            setSviTopContributors(Array.isArray(payload.top_contributors) ? payload.top_contributors.map(String) : []);
+            setSviProtectiveReduction(Number(payload.protective_factor_reduction ?? 0));
+            setSviCriticalOverride(Boolean(payload.critical_override_applied));
+            setSviRequiresHumanReview(Boolean(payload.requires_human_review));
+            setSviHistory((prev) => [
+              ...prev,
+              { score, band: String(payload.band || "LOW"), evaluated_at: envelope.timestamp },
+            ]);
+          }
           break;
       }
     },
@@ -780,6 +816,17 @@ export default function OperatorCallsPage() {
           >
             <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
             <span>Safety Lab</span>
+          </button>
+
+          {/* SVI Simulation Lab Button */}
+          <button
+            data-testid="open-svi-lab"
+            onClick={() => setIsSviLabOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold transition-all"
+            title="Open SVI Scoring Simulation Lab"
+          >
+            <Activity className="h-3.5 w-3.5 text-cyan-400" />
+            <span>SVI Lab</span>
           </button>
 
           {/* Action Buttons */}
@@ -1163,6 +1210,149 @@ export default function OperatorCallsPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Phase 5: SVI Scoring Panel */}
+              <div data-testid="svi-panel" className="mx-5 mt-3 p-4 rounded-xl bg-gradient-to-br from-slate-900/90 to-cyan-950/30 border border-cyan-800/40 shadow">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`h-12 w-12 rounded-lg flex items-center justify-center text-lg font-black ${
+                        sviBand === "CRITICAL"
+                          ? "bg-red-600 text-white animate-pulse"
+                          : sviBand === "HIGH"
+                          ? "bg-amber-500 text-slate-950"
+                          : sviBand === "MODERATE"
+                          ? "bg-yellow-500 text-slate-950"
+                          : "bg-emerald-600 text-white"
+                      }`}
+                    >
+                      {sviScore !== null ? sviScore : "—"}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold tracking-wide uppercase">
+                          SVI Score:
+                        </span>
+                        <span
+                          data-testid="svi-band-badge"
+                          className={`text-xs px-2.5 py-0.5 rounded font-black tracking-wider ${
+                            sviBand === "CRITICAL"
+                              ? "bg-red-500 text-white animate-pulse"
+                              : sviBand === "HIGH"
+                              ? "bg-amber-500 text-slate-950"
+                              : sviBand === "MODERATE"
+                              ? "bg-yellow-500 text-slate-950"
+                              : "bg-emerald-600 text-white"
+                          }`}
+                        >
+                          {sviBand}
+                        </span>
+                        <span
+                          data-testid="svi-trend-indicator"
+                          className={`text-xs px-2 py-0.5 rounded font-bold ${
+                            sviTrend === "RISING"
+                              ? "bg-red-900/60 text-red-200"
+                              : sviTrend === "FALLING"
+                              ? "bg-emerald-900/60 text-emerald-200"
+                              : sviTrend === "STABLE"
+                              ? "bg-slate-800 text-slate-300"
+                              : "bg-slate-800 text-slate-400"
+                          }`}
+                        >
+                          {sviTrend === "RISING" ? "↑" : sviTrend === "FALLING" ? "↓" : "→"} {sviTrend}
+                          {sviDelta !== 0 && ` (${sviDelta > 0 ? "+" : ""}${sviDelta})`}
+                        </span>
+                        {sviRequiresHumanReview && (
+                          <span
+                            data-testid="svi-human-review-badge"
+                            className="text-[10px] px-2 py-0.5 rounded bg-red-900/60 text-red-200 border border-red-700 font-semibold uppercase tracking-wider"
+                          >
+                            Human Review Required
+                          </span>
+                        )}
+                        {sviCriticalOverride && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-red-600 text-white font-bold uppercase tracking-wider">
+                            Critical Override
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Operational Prototype Priority Indicator — NOT a clinical, medical, or diagnostic score
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right space-y-1">
+                    <div className="text-xs text-slate-400">
+                      Completeness
+                    </div>
+                    <div className="w-24 h-2 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        data-testid="svi-completeness-bar"
+                        className="h-full bg-cyan-500 rounded-full transition-all"
+                        style={{ width: `${Math.round(sviCompleteness * 100)}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono">
+                      {Math.round(sviCompleteness * 100)}%
+                    </div>
+                  </div>
+                </div>
+
+                {/* Top Contributing Risk Factors */}
+                {sviTopContributors.length > 0 && (
+                  <div data-testid="svi-top-contributors" className="mt-3 border-t border-slate-800/80 pt-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Top Contributing Factors</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {sviTopContributors.map((c, i) => (
+                        <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-200 font-mono border border-slate-700">
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Protective Factor Reduction */}
+                {sviProtectiveReduction > 0 && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/50 text-emerald-300 font-semibold border border-emerald-700">
+                      Protective Buffer: −{sviProtectiveReduction} pts
+                    </span>
+                  </div>
+                )}
+
+                {/* Acoustic Evidence Deferral Notice */}
+                <div data-testid="svi-acoustic-notice" className="mt-2.5 flex items-center gap-2 text-[10px] text-slate-500 italic">
+                  <Mic className="h-3 w-3" />
+                  Acoustic evidence: Not available in current phase (Phase 6 deferred)
+                </div>
+
+                {/* SVI History Timeline */}
+                {sviHistory.length > 1 && (
+                  <div className="mt-3 border-t border-slate-800/80 pt-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Turn-by-Turn History</div>
+                    <div className="flex items-end gap-1 h-8">
+                      {sviHistory.slice(-20).map((h, i) => (
+                        <div
+                          key={i}
+                          className={`w-3 rounded-sm ${
+                            h.band === "CRITICAL"
+                              ? "bg-red-500"
+                              : h.band === "HIGH"
+                              ? "bg-amber-500"
+                              : h.band === "MODERATE"
+                              ? "bg-yellow-500"
+                              : "bg-emerald-500"
+                          }`}
+                          style={{ height: `${Math.max(4, (h.score / 100) * 32)}px` }}
+                          title={`Turn ${i + 1}: SVI ${h.score} (${h.band})`}
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1836,6 +2026,192 @@ export default function OperatorCallsPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SVI Simulation Lab Modal */}
+      {isSviLabOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-950 border border-cyan-700/40 rounded-2xl w-full max-w-2xl mx-6 max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <Activity className="h-5 w-5 text-cyan-400" />
+                <h2 className="text-lg font-bold text-white">SVI Scoring Simulation Lab</h2>
+              </div>
+              <button onClick={() => setIsSviLabOpen(false)} className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 mb-4">
+              Test the deterministic Stress Vulnerability Index scoring engine with multilingual utterances.
+              SVI is an <strong className="text-cyan-300">Operational Prototype Priority Indicator</strong> — NOT a clinical, medical, or diagnostic score.
+            </p>
+
+            {/* Preset Scenarios */}
+            <div className="space-y-2 mb-4">
+              <label className="block text-xs font-semibold text-slate-300">Preset Scenarios:</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => { setSviLabInput("He locked me inside and took my phone. I am panicking, extremely scared, and nobody here to help."); setSviLabLang("en-IN"); }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-red-300 border border-red-500/30 font-medium"
+                >
+                  Active Danger
+                </button>
+                <button
+                  onClick={() => { setSviLabInput("He controls my money and tracking me, won't let me leave the house."); setSviLabLang("en-IN"); }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-medium"
+                >
+                  Coercive Control
+                </button>
+                <button
+                  onClick={() => { setSviLabInput("ரொம்ப பயமா இருக்கு, யாரும் இல்ல, வெளியே விட மாட்டாங்க."); setSviLabLang("ta-IN"); }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-medium"
+                >
+                  Tamil Distress
+                </button>
+                <button
+                  onClick={() => { setSviLabInput("I am in a safe place now, my mother is with me and police arrived."); setSviLabLang("en-IN"); }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-medium"
+                >
+                  Protective Buffer
+                </button>
+                <button
+                  onClick={() => { setSviLabInput("He used to hit me last year but it stopped."); setSviLabLang("en-IN"); }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 font-medium"
+                >
+                  Historical Only
+                </button>
+              </div>
+            </div>
+
+            {/* Input */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300">Caller Utterance:</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">Language:</span>
+                  <select
+                    data-testid="svi-lab-lang"
+                    value={sviLabLang}
+                    onChange={(e) => setSviLabLang(e.target.value)}
+                    className="bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                  >
+                    <option value="en-IN">English (en-IN)</option>
+                    <option value="ta-IN">Tamil (ta-IN)</option>
+                    <option value="hi-IN">Hindi (hi-IN)</option>
+                  </select>
+                </div>
+              </div>
+
+              <textarea
+                data-testid="svi-lab-input"
+                rows={3}
+                value={sviLabInput}
+                onChange={(e) => setSviLabInput(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-white font-sans focus:border-cyan-500 focus:outline-none resize-none"
+                placeholder="Enter caller utterance(s) to evaluate SVI score..."
+              />
+
+              <button
+                data-testid="svi-lab-evaluate"
+                disabled={isEvaluatingSvi || !sviLabInput.trim()}
+                onClick={async () => {
+                  setIsEvaluatingSvi(true);
+                  setSviLabResult(null);
+                  try {
+                    const res = await fetch(`${apiUrl}/v1/svi/evaluate`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        turns: [{ speaker: "caller", text: sviLabInput, language: sviLabLang }],
+                        turn_index: 1,
+                      }),
+                    });
+                    if (res.ok) {
+                      setSviLabResult(await res.json());
+                    }
+                  } catch (e) {
+                    console.error("SVI evaluation failed:", e);
+                  } finally {
+                    setIsEvaluatingSvi(false);
+                  }
+                }}
+                className="w-full py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isEvaluatingSvi ? (
+                  <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Evaluating...</>
+                ) : (
+                  <><Activity className="h-3.5 w-3.5" /> Evaluate SVI Score</>
+                )}
+              </button>
+            </div>
+
+            {/* Result */}
+            {sviLabResult && (
+              <div data-testid="svi-lab-result" className="mt-5 space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-slate-900 border border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`h-10 w-10 rounded-lg flex items-center justify-center text-base font-black ${
+                        sviLabResult.band === "CRITICAL"
+                          ? "bg-red-600 text-white"
+                          : sviLabResult.band === "HIGH"
+                          ? "bg-amber-500 text-slate-950"
+                          : sviLabResult.band === "MODERATE"
+                          ? "bg-yellow-500 text-slate-950"
+                          : "bg-emerald-600 text-white"
+                      }`}
+                    >
+                      {sviLabResult.score}
+                    </div>
+                    <div>
+                      <span className={`text-xs px-2.5 py-0.5 rounded font-black tracking-wider ${
+                        sviLabResult.band === "CRITICAL" ? "bg-red-500 text-white"
+                        : sviLabResult.band === "HIGH" ? "bg-amber-500 text-slate-950"
+                        : sviLabResult.band === "MODERATE" ? "bg-yellow-500 text-slate-950"
+                        : "bg-emerald-600 text-white"
+                      }`}>
+                        {sviLabResult.band}
+                      </span>
+                      {sviLabResult.requires_human_review && (
+                        <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-red-900/60 text-red-200 border border-red-700 font-semibold uppercase">
+                          Human Review Required
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right text-[10px] text-slate-400 font-mono">
+                    Completeness: {Math.round(sviLabResult.assessment_completeness * 100)}%
+                  </div>
+                </div>
+
+                {/* Features */}
+                {sviLabResult.features && sviLabResult.features.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Feature Attribution ({sviLabResult.features.length}):
+                    </label>
+                    {sviLabResult.features.map((f: any, i: number) => (
+                      <div key={i} className="p-2.5 rounded bg-slate-900 border border-slate-800 text-xs flex items-center justify-between">
+                        <div>
+                          <span className="font-mono text-white">{f.feature_name}</span>
+                          <span className="text-[10px] ml-2 text-slate-400">[{f.recency}]</span>
+                        </div>
+                        <span className="text-cyan-300 font-bold">+{f.weighted_score.toFixed(1)} pts</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Acoustic Notice */}
+                <div className="text-[10px] text-slate-500 italic flex items-center gap-1.5">
+                  <Mic className="h-3 w-3" />
+                  {sviLabResult.acoustic_evidence_note || "Acoustic evidence: Not available in current phase (Phase 6 deferred)"}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -222,7 +222,7 @@ pnpm dev:web
 
 ---
 
-## 12. Implementation Status (Phase 3 Complete)
+## 12. Implementation Status (Phase 5 Complete)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -256,8 +256,11 @@ pnpm dev:web
 | **Deterministic Safety Engine (Sub-5ms, Offline, Explainable)** | ✅ | Phase 4 |
 | **Versioned Safety Rules (v1: Threats, Weapons, Self-Harm, Confinement)** | ✅ | Phase 4 |
 | **Operator Safety Oversight Banner & Immutable Audit Acknowledgment** | ✅ | Phase 4 |
-| **Deterministic Safety Simulation & Test Lab** | ✅ | Phase 4 |
-| **Stress Vulnerability Index (SVI 0–100 Bands)** | ⏳ | Phase 5 |
+| **Stress Vulnerability Index (SVI 0–100 Bands)** | ✅ | Phase 5 |
+| **Deterministic SVI Engine (Sub-5ms, Offline, Explainable)** | ✅ | Phase 5 |
+| **Versioned SVI Weights & Multilingual Lexicons (en-IN, ta-IN, hi-IN)** | ✅ | Phase 5 |
+| **Operator SVI Panel, Feature Attribution & Turn History** | ✅ | Phase 5 |
+| **Interactive SVI Simulation Lab** | ✅ | Phase 5 |
 | **Acoustic Paralinguistic Feature Extraction** | ⏳ | Phase 6 |
 | **Multi-Agent Orchestrator** | ⏳ | Phase 9 |
 | **Statutory & Scheme RAG (NDPS / IRCA)** | ⏳ | Phase 10 |

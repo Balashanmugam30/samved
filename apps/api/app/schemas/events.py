@@ -84,8 +84,16 @@ class SVIContributingFactor(BaseModel):
 class SVIUpdatedPayload(BaseModel):
     score: int = Field(..., ge=0, le=100)
     band: SVIBand
-    confidence: float = Field(..., ge=0.0, le=1.0)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     contributing_factors: List[SVIContributingFactor] = Field(default_factory=list)
+    trend: str = "INITIAL"
+    delta: int = 0
+    assessment_completeness: float = Field(default=0.0, ge=0.0, le=1.0)
+    top_contributors: List[str] = Field(default_factory=list)
+    protective_factor_reduction: int = 0
+    critical_override_applied: bool = False
+    requires_human_review: bool = False
+    acoustic_evidence_note: str = "Acoustic evidence: Not available in current phase (Phase 6 deferred)"
     is_clinical_diagnosis: bool = False  # Guaranteed non-clinical
 
 

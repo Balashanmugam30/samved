@@ -118,6 +118,13 @@ export enum SVIBand {
   CRITICAL = "CRITICAL"    // 76–100
 }
 
+export enum SVITrend {
+  INITIAL = "INITIAL",
+  RISING = "RISING",
+  FALLING = "FALLING",
+  STABLE = "STABLE"
+}
+
 export interface SVIUpdatedPayload {
   score: number; // 0 to 100
   band: SVIBand;
@@ -127,6 +134,14 @@ export interface SVIUpdatedPayload {
     weight: number;
     evidence: string;
   }>;
+  trend?: SVITrend;
+  delta?: number;
+  assessment_completeness?: number;
+  top_contributors?: string[];
+  protective_factor_reduction?: number;
+  critical_override_applied?: boolean;
+  requires_human_review?: boolean;
+  acoustic_evidence_note?: string;
   is_clinical_diagnosis: false; // Explicit architectural guarantee
 }
 

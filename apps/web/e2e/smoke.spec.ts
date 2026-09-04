@@ -24,8 +24,8 @@ test.describe("SAMVED Web Console Smoke Tests", () => {
     // 3. Verify Operational Status Panel presence
     const statusPanelTitle = page.locator("text=System Operational Status");
     await expect(statusPanelTitle).toBeVisible();
-    await expect(page.locator("text=FastAPI Backend")).toBeVisible();
-    await expect(page.locator("text=Realtime Gateway")).toBeVisible();
+    await expect(page.getByText("FastAPI Backend", { exact: true })).toBeVisible();
+    await expect(page.getByText("Realtime Gateway", { exact: true })).toBeVisible();
     await expect(page.getByText("Telephony Ingress", { exact: true })).toBeVisible();
 
     // 4. Verify no fatal error banner or uncaught exception

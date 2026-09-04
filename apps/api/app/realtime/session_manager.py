@@ -66,6 +66,11 @@ class TelephonySession:
         self.event_history: Deque[Dict[str, Any]] = deque(maxlen=100)
         self.saved_utterances: List[Dict[str, Any]] = []
 
+        # Phase 4 Deterministic Safety Signals
+        self.active_safety_signals: List[Dict[str, Any]] = []
+        self.saved_safety_state: str = "NONE"
+        self.saved_safety_signals: List[Dict[str, Any]] = []
+
         # Metrics and sequence validation
         self.last_sequence_number: int = 0
         self.inbound_frames_count: int = 0
@@ -80,14 +85,35 @@ class TelephonySession:
         self.last_activity_at = datetime.now(timezone.utc).isoformat()
 
     def record_event(self, envelope: Any) -> None:
-        """Stores a serialized event in the bounded session event history."""
+        """Stores a serialized event in the bounded session event history and tracks safety signals."""
         try:
+            dumped = None
             if hasattr(envelope, "model_dump"):
-                self.event_history.append(envelope.model_dump())
+                dumped = envelope.model_dump()
             elif isinstance(envelope, dict):
-                self.event_history.append(envelope)
+                dumped = envelope
+
+            if dumped:
+                self.event_history.append(dumped)
+                # If safety signal, record in active safety signals
+                ev_type_str = str(dumped.get("event_type", ""))
+                if "SAFETY_SIGNAL" in ev_type_str:
+                    sig_payload = dumped.get("payload", {})
+                    # Prevent duplicates by signal_id
+                    if not any(s.get("signal_id") == sig_payload.get("signal_id") for s in self.active_safety_signals):
+                        self.active_safety_signals.append(sig_payload)
         except Exception as e:
             logger.error(f"Error recording event in session {self.session_id}: {e}")
+
+    def acknowledge_signal(self, signal_id: str, acknowledged_by: str = "operator") -> Optional[Dict[str, Any]]:
+        """Records operator acknowledgment on an active safety signal."""
+        for sig in self.active_safety_signals:
+            if sig.get("signal_id") == signal_id:
+                sig["acknowledged"] = True
+                sig["acknowledged_at"] = datetime.now(timezone.utc).isoformat()
+                sig["acknowledged_by"] = acknowledged_by
+                return sig
+        return None
 
     def calculate_duration(self) -> float:
         """Calculates call duration in seconds based on connected_at and ended_at/now."""
@@ -128,6 +154,7 @@ class TelephonySession:
         """Returns dictionary summary for REST API and operator console."""
         conv_state = self.orchestrator.state.value if self.orchestrator else "ENDED"
         current_lang = self.orchestrator.current_language.value if self.orchestrator else "unknown"
+        safety_state = self.orchestrator.current_safety_state if self.orchestrator else getattr(self, "saved_safety_state", "NONE")
         utts = self.get_utterances()
 
         return {
@@ -144,6 +171,9 @@ class TelephonySession:
             "duration_seconds": self.calculate_duration(),
             "conversation_state": conv_state,
             "current_language": current_lang,
+            "safety_state": safety_state,
+            "safety_signals": list(self.active_safety_signals),
+            "safety_signals_count": len(self.active_safety_signals),
             "utterances_count": len(utts),
             "events_count": len(self.event_history),
             "is_active": self.state_machine.is_active,
@@ -196,6 +226,7 @@ class TelephonySession:
         conv_state = self.orchestrator.state.value if self.orchestrator else None
         current_lang = self.orchestrator.current_language.value if self.orchestrator else None
         utts_count = len(self.orchestrator.utterances) if self.orchestrator else 0
+        safety_state = self.orchestrator.current_safety_state if self.orchestrator else getattr(self, "saved_safety_state", "NONE")
 
         return TelephonySessionInfo(
             session_id=self.session_id,
@@ -214,6 +245,8 @@ class TelephonySession:
             conversation_state=conv_state,
             current_language=current_lang,
             utterances_count=utts_count,
+            safety_state=safety_state,
+            safety_signals_count=len(self.active_safety_signals),
             is_active=self.state_machine.is_active,
         )
 
@@ -353,8 +386,10 @@ class RealtimeSessionManager:
             if not session:
                 return None
 
-            # 1. Snapshot utterances and mark ended timestamp
+            # 1. Snapshot utterances, safety state and mark ended timestamp
             session.saved_utterances = session.get_utterances()
+            session.saved_safety_state = session.orchestrator.current_safety_state if session.orchestrator else "NONE"
+            session.saved_safety_signals = list(session.active_safety_signals)
             session.ended_at = datetime.now(timezone.utc).isoformat()
 
             # 2. Stop conversation orchestrator cleanly
@@ -374,6 +409,8 @@ class RealtimeSessionManager:
             summary = session.get_summary_dict()
             summary["events"] = list(session.event_history)
             summary["utterances"] = list(session.saved_utterances)
+            summary["safety_signals"] = list(session.saved_safety_signals)
+            summary["safety_state"] = session.saved_safety_state
             self._recent_sessions.appendleft(summary)
             self._recent_calls_map[session.call_id] = summary
             if len(self._recent_calls_map) > 100:
@@ -436,6 +473,78 @@ class RealtimeSessionManager:
             return list(sess.event_history)
         if call_id in self._recent_calls_map:
             return self._recent_calls_map[call_id].get("events", [])
+        return None
+
+    async def get_call_safety(self, call_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves safety state and active signals for an active or completed call."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            state = sess.orchestrator.current_safety_state if sess.orchestrator else getattr(sess, "saved_safety_state", "NONE")
+            assessments = []
+            if sess.orchestrator:
+                assessments = [a.model_dump() for a in sess.orchestrator.safety_assessments]
+            return {
+                "call_id": call_id,
+                "session_id": sess.session_id,
+                "safety_state": state,
+                "safety_signals": list(sess.active_safety_signals),
+                "safety_signals_count": len(sess.active_safety_signals),
+                "assessments": assessments,
+            }
+        if call_id in self._recent_calls_map:
+            c = self._recent_calls_map[call_id]
+            return {
+                "call_id": call_id,
+                "session_id": c.get("session_id"),
+                "safety_state": c.get("safety_state", "NONE"),
+                "safety_signals": c.get("safety_signals", []),
+                "safety_signals_count": len(c.get("safety_signals", [])),
+                "assessments": [],
+            }
+        return None
+
+    async def acknowledge_call_signal(
+        self, call_id: str, signal_id: str, acknowledged_by: str = "operator"
+    ) -> Optional[Dict[str, Any]]:
+        """Acknowledges a safety signal on an active or completed call and broadcasts the event."""
+        sess = await self.get_by_call_id(call_id)
+        sig = None
+        if sess:
+            sig = sess.acknowledge_signal(signal_id, acknowledged_by=acknowledged_by)
+            if sig:
+                # Broadcast SAFETY_SIGNAL_ACKNOWLEDGED domain event
+                from app.schemas.events import EventEnvelope, EventType
+                env = EventEnvelope(
+                    event_type=EventType.SAFETY_SIGNAL_ACKNOWLEDGED,
+                    call_id=call_id,
+                    session_id=sess.session_id,
+                    payload={
+                        "call_id": call_id,
+                        "session_id": sess.session_id,
+                        "signal_id": signal_id,
+                        "acknowledged_by": acknowledged_by,
+                        "acknowledged_at": sig.get("acknowledged_at"),
+                    },
+                )
+                sess.record_event(env)
+                if sess.orchestrator:
+                    for sub in list(sess.orchestrator.subscribers):
+                        try:
+                            res = sub(env)
+                            if asyncio.iscoroutine(res):
+                                asyncio.create_task(res)
+                        except Exception as e:
+                            logger.error(f"Error broadcasting safety ack event: {e}")
+                return sig
+
+        if call_id in self._recent_calls_map:
+            c = self._recent_calls_map[call_id]
+            for s in c.get("safety_signals", []):
+                if s.get("signal_id") == signal_id:
+                    s["acknowledged"] = True
+                    s["acknowledged_at"] = datetime.now(timezone.utc).isoformat()
+                    s["acknowledged_by"] = acknowledged_by
+                    return s
         return None
 
     @property

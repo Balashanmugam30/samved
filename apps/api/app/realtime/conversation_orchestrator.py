@@ -1,8 +1,9 @@
-﻿import asyncio
+import asyncio
 import logging
 import time
 import uuid
 from collections import deque
+from datetime import datetime, timezone
 from typing import Any, Callable, Deque, Dict, List, Optional
 
 from app.core.config import get_settings
@@ -46,6 +47,11 @@ class ConversationOrchestrator:
         self.state = ConversationState.LISTENING
         self.current_language = LanguageCode.TA  # Default to Tamil / multilingual auto-detect
         self.utterances: Deque[Utterance] = deque(maxlen=max_context_utterances)
+
+        # Phase 4 Deterministic Safety Engine tracking
+        self.current_safety_state = "NONE"
+        self.fired_safety_signals: Set[str] = set()
+        self.safety_assessments: List[Any] = []
 
         # Active turn & latency tracking
         self.active_latency = TurnLatency()
@@ -160,12 +166,73 @@ class ConversationOrchestrator:
             {
                 "session_id": self.session_id,
                 "call_id": self.call_id,
+                "utterance_id": utterance.utterance_id,
                 "speaker": "caller",
                 "text": event.text,
                 "confidence": event.confidence,
                 "language": self.current_language.value,
             },
         )
+
+        # 4. Phase 4: Deterministic Safety Evaluation
+        try:
+            from app.services.safety_engine import safety_engine
+            safety_assessment = safety_engine.evaluate_turn(
+                utterance_text=event.text,
+                language=self.current_language.value,
+                call_id=self.call_id,
+                session_id=self.session_id,
+                utterance_id=utterance.utterance_id,
+                previously_fired_signals=self.fired_safety_signals,
+            )
+
+            # Record in safety history
+            self.safety_assessments.append(safety_assessment)
+
+            # Update utterance safety flag
+            if safety_assessment.current_state.value in ("HIGH", "CRITICAL"):
+                utterance.safety_flag = True
+
+            # Emit SAFETY_SIGNAL events for any newly triggered signals
+            for sig in safety_assessment.signals:
+                self.broadcast(
+                    "SAFETY_SIGNAL",
+                    {
+                        "call_id": self.call_id,
+                        "session_id": self.session_id,
+                        "signal_id": sig.signal_id,
+                        "signal_type": sig.signal_type.value,
+                        "severity": sig.severity.value,
+                        "rule_id": sig.rule_id,
+                        "rule_version": sig.rule_version,
+                        "reason": sig.evidence.reason,
+                        "matched_phrase": sig.evidence.matched_phrase,
+                        "requires_human_review": sig.requires_human_review,
+                        "source_utterance_id": utterance.utterance_id,
+                        "created_at": sig.created_at,
+                    },
+                )
+
+            # Emit SAFETY_STATE_UPDATED if safety state changed
+            new_state_val = safety_assessment.current_state.value
+            if new_state_val != self.current_safety_state and new_state_val != "NONE":
+                prev_state_val = self.current_safety_state
+                self.current_safety_state = new_state_val
+                self.broadcast(
+                    "SAFETY_STATE_UPDATED",
+                    {
+                        "call_id": self.call_id,
+                        "session_id": self.session_id,
+                        "previous_state": prev_state_val,
+                        "current_state": new_state_val,
+                        "highest_severity": safety_assessment.highest_severity.value,
+                        "requires_human_review": safety_assessment.requires_human_review,
+                        "signals_count": len(safety_assessment.signals),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+        except Exception as e:
+            logger.error(f"Error in deterministic safety evaluation for {self.session_id}: {e}")
 
         # If agent was speaking when final transcript landed, ensure interruption was performed
         if self.state == ConversationState.SPEAKING:

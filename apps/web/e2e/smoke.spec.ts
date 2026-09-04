@@ -44,7 +44,7 @@ test.describe("SAMVED Web Console Smoke Tests", () => {
     // Navigate to Live Telephony
     await page.click("text=Live Telephony");
     await expect(page).toHaveURL(/.*\/calls/);
-    await expect(page.locator("text=Phase 3: Realtime Observation")).toBeVisible();
+    await expect(page.locator("text=Phase 4: Realtime Safety & Oversight")).toBeVisible();
     await expect(page.locator("text=SAMVED Operator Console")).toBeVisible();
 
     // Verify simulation trigger button is present

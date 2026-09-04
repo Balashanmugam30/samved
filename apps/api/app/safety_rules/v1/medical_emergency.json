@@ -1,0 +1,55 @@
+[
+  {
+    "rule_id": "SAFETY_MEDICAL_EMERGENCY_001",
+    "rule_version": "v1",
+    "category": "MEDICAL_EMERGENCY",
+    "signal_type": "MEDICAL_EMERGENCY",
+    "severity": "CRITICAL",
+    "requires_human_review": true,
+    "description": "Caller reports acute medical distress, breathing failure, heavy bleeding, or overdose.",
+    "reason": "Caller stated an acute physical medical emergency requiring urgent human intervention.",
+    "languages": ["en-IN", "ta-IN", "hi-IN"],
+    "patterns": {
+      "en-IN": [
+        "cannot breathe",
+        "can't breathe",
+        "bleeding heavily",
+        "bleeding badly",
+        "overdosed on",
+        "took too many pills",
+        "unconscious on the floor",
+        "having a seizure",
+        "severe chest pain"
+      ],
+      "ta-IN": [
+        "மூச்சு விட முடியல",
+        "ரத்தம் ரொம்ப போகுது",
+        "மாத்திரை நிறைய போட்டுட்டேன்",
+        "மயங்கி விழுந்துட்டாங்க",
+        "நெஞ்சு ரொம்ப வலிக்குது",
+        "moochu vida mudiyala",
+        "ratham romba pogudhu",
+        "maathirai neraiya pottuten",
+        "mayangi vizhunthutanga"
+      ],
+      "hi-IN": [
+        "सांस नहीं आ रही",
+        "बहुत खून बह रहा है",
+        "ज्यादा दवाई खा ली",
+        "बेहोश पड़ा है",
+        "सीने में तेज दर्द है",
+        "saans nahi aa rahi",
+        "bahut khoon beh raha",
+        "zyada dawai kha li",
+        "behosh pada hai"
+      ]
+    },
+    "temporal_requirement": "PRESENT",
+    "negation_sensitive": true,
+    "negative_examples": [
+      "I had trouble breathing last winter",
+      "I felt dizzy yesterday",
+      "I have a mild headache"
+    ]
+  }
+]

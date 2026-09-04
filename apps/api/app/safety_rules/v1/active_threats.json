@@ -1,0 +1,112 @@
+[
+  {
+    "rule_id": "SAFETY_ACTIVE_THREAT_001",
+    "rule_version": "v1",
+    "category": "ONGOING_THREAT",
+    "signal_type": "ONGOING_THREAT",
+    "severity": "HIGH",
+    "requires_human_review": true,
+    "description": "Caller reports an ongoing, active person-related threat at their current location.",
+    "reason": "Caller indicated an immediate active threat at their location.",
+    "languages": ["en-IN", "ta-IN", "hi-IN"],
+    "patterns": {
+      "en-IN": [
+        "outside my door",
+        "outside my house",
+        "trying to break in",
+        "breaking into my",
+        "breaking the door",
+        "breaking my door",
+        "breaking into",
+        "banging on the door",
+        "hitting me right now",
+        "attacking me now",
+        "coming toward me",
+        "threatening to kill",
+        "threatens to kill",
+        "kill me",
+        "he is right outside",
+        "they are outside"
+      ],
+      "ta-IN": [
+        "வெளியே நிக்கிறான்",
+        "வெளியே நிக்கிறாங்க",
+        "கதவை உடைக்கிறான்",
+        "என்னை அடிக்கிறான்",
+        "என்னை அடிக்கிறாங்க",
+        "என்னை அடிக்கிறார்",
+        "அடிக்கிறார்",
+        "தாக்குகிறார்",
+        "உள்ளே வர பாக்கிறான்",
+        "veliya nikran",
+        "veliya nikranga",
+        "kadhava udaikran",
+        "enna adikran",
+        "ulla vara paakran",
+        "bayama irukku avan veliya"
+      ],
+      "hi-IN": [
+        "दरवाजे के बाहर है",
+        "घर के बाहर खड़ा है",
+        "दरवाजा तोड़ रहा है",
+        "मुझे मार रहा है",
+        "अंदर घुसने की कोशिश",
+        "darwaze ke bahar",
+        "ghar ke bahar khada",
+        "darwaza tod raha",
+        "mujhe maar raha hai",
+        "andar ghusne ki koshish"
+      ]
+    },
+    "temporal_requirement": "PRESENT",
+    "negation_sensitive": true,
+    "negative_examples": [
+      "He was outside my house yesterday",
+      "If he comes outside",
+      "He used to bang on the door last month"
+    ]
+  },
+  {
+    "rule_id": "SAFETY_ACTIVE_VIOLENCE_001",
+    "rule_version": "v1",
+    "category": "ACTIVE_VIOLENCE",
+    "signal_type": "ACTIVE_VIOLENCE",
+    "severity": "CRITICAL",
+    "requires_human_review": true,
+    "description": "Caller indicates physical violence is actively occurring during the call.",
+    "reason": "Caller indicated that physical violence or assault is in active progress.",
+    "languages": ["en-IN", "ta-IN", "hi-IN"],
+    "patterns": {
+      "en-IN": [
+        "he is hitting me",
+        "she is beating me",
+        "they are beating me",
+        "he is choking me",
+        "actively assaulting",
+        "hurting me right now"
+      ],
+      "ta-IN": [
+        "என்னை அடிச்சிட்டு இருக்கான்",
+        "கழுத்தை நெரிக்கிறான்",
+        "ரொம்ப அடிக்கிறான்",
+        "enna adichitu irukan",
+        "kazhutha nerikiran",
+        "romba adikran"
+      ],
+      "hi-IN": [
+        "मुझे पीट रहा है",
+        "गला दबा रहा है",
+        "मारपीट कर रहा है",
+        "mujhe peet raha hai",
+        "gala daba raha hai",
+        "maarpeet kar raha hai"
+      ]
+    },
+    "temporal_requirement": "PRESENT",
+    "negation_sensitive": true,
+    "negative_examples": [
+      "He beat me two weeks ago",
+      "I was beaten in the past"
+    ]
+  }
+]

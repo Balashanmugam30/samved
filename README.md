@@ -253,7 +253,10 @@ pnpm dev:web
 | **Master-Detail Operator Console (`/calls`, Filters, Inspector)** | ✅ | Phase 3 |
 | **Localhost Runbook & Manual Verification Report** | ✅ | Phase 3 |
 | **Live External Telephony / Cloud Provider Access** | ⚠️ Blocked by External Credentials | Phase 1 & 2 |
-| **Deterministic Safety Engine** | ⏳ | Phase 4 |
+| **Deterministic Safety Engine (Sub-5ms, Offline, Explainable)** | ✅ | Phase 4 |
+| **Versioned Safety Rules (v1: Threats, Weapons, Self-Harm, Confinement)** | ✅ | Phase 4 |
+| **Operator Safety Oversight Banner & Immutable Audit Acknowledgment** | ✅ | Phase 4 |
+| **Deterministic Safety Simulation & Test Lab** | ✅ | Phase 4 |
 | **Stress Vulnerability Index (SVI 0–100 Bands)** | ⏳ | Phase 5 |
 | **Acoustic Paralinguistic Feature Extraction** | ⏳ | Phase 6 |
 | **Multi-Agent Orchestrator** | ⏳ | Phase 9 |

@@ -120,6 +120,8 @@ class TelephonySessionInfo(BaseModel):
     conversation_state: Optional[str] = None
     current_language: Optional[str] = None
     utterances_count: int = 0
+    safety_state: Optional[str] = "NONE"
+    safety_signals_count: int = 0
     is_active: bool = True
 
 

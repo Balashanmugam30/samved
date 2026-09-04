@@ -1,0 +1,48 @@
+[
+  {
+    "rule_id": "SAFETY_STALKING_001",
+    "rule_version": "v1",
+    "category": "STALKING",
+    "signal_type": "STALKING",
+    "severity": "HIGH",
+    "requires_human_review": true,
+    "description": "Caller reports active physical following, pursuit, or stalking.",
+    "reason": "Caller indicated they are actively being followed or physically pursued right now.",
+    "languages": ["en-IN", "ta-IN", "hi-IN"],
+    "patterns": {
+      "en-IN": [
+        "following me right now",
+        "following me home",
+        "chasing me right now",
+        "stalking me outside",
+        "waiting for me outside",
+        "walking behind me"
+      ],
+      "ta-IN": [
+        "பின்னாலேயே வரான்",
+        "என்னை தொடர்ந்து வரான்",
+        "வெளியே காத்துட்டு இருக்கான்",
+        "துரத்திட்டு வரான்",
+        "pinnadiye varan",
+        "enna thodarndhu varan",
+        "thurathitu varan"
+      ],
+      "hi-IN": [
+        "पीछा कर रहा है",
+        "मेरे पीछे आ रहा है",
+        "बाहर इंतज़ार कर रहा",
+        "दौड़ा रहा है",
+        "peecha kar raha hai",
+        "mere peeche aa raha",
+        "bahar intezaar kar raha"
+      ]
+    },
+    "temporal_requirement": "PRESENT",
+    "negation_sensitive": true,
+    "negative_examples": [
+      "He followed me on social media",
+      "I was followed last year",
+      "I am following your instructions"
+    ]
+  }
+]

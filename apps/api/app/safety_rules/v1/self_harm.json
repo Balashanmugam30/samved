@@ -1,0 +1,61 @@
+[
+  {
+    "rule_id": "SAFETY_SELF_HARM_EXPLICIT_001",
+    "rule_version": "v1",
+    "category": "SELF_HARM",
+    "signal_type": "SELF_HARM",
+    "severity": "CRITICAL",
+    "requires_human_review": true,
+    "description": "Caller explicitly expresses self-harm or suicidal ideation.",
+    "reason": "Caller stated an explicit intention or contemplation of suicide or severe self-harm.",
+    "languages": ["en-IN", "ta-IN", "hi-IN"],
+    "patterns": {
+      "en-IN": [
+        "want to die",
+        "thinking about killing myself",
+        "thinking of killing myself",
+        "going to kill myself",
+        "end my life",
+        "hurt myself badly",
+        "no reason to live",
+        "commit suicide",
+        "don't want to live anymore"
+      ],
+      "ta-IN": [
+        "சாக போறேன்",
+        "செத்துடலாம்னு இருக்கேன்",
+        "உயிரை விட போறேன்",
+        "தற்கொலை பண்ணிக்க போறேன்",
+        "வாழ பிடிக்கல சாகணும்",
+        "saaga poren",
+        "sethudalamnu iruken",
+        "uyira vida poren",
+        "tharkolai pannika poren",
+        "vaazha pidikala saaganum"
+      ],
+      "hi-IN": [
+        "मरना चाहता हूँ",
+        "मरना चाहती हूँ",
+        "खुदकुशी करने की सोच",
+        "जान दे दूंगा",
+        "जान दे दूंगी",
+        "जीने का मन नहीं है",
+        "आत्महत्या करना चाहता",
+        "marna chahta hoon",
+        "marna chahti hoon",
+        "khudkushi karne ki soch",
+        "jaan de dunga",
+        "jeene ka man nahi hai"
+      ]
+    },
+    "temporal_requirement": "PRESENT",
+    "negation_sensitive": true,
+    "negative_examples": [
+      "I am so tired today",
+      "I feel terrible",
+      "Nothing is working properly",
+      "My phone battery is dying",
+      "I do not want to die"
+    ]
+  }
+]

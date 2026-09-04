@@ -28,9 +28,41 @@ import {
   User,
   Bot,
   Layers,
+  ShieldAlert,
+  CheckSquare,
+  FileText,
+  Terminal,
 } from "lucide-react";
 import { useOperatorWebSocket } from "@/hooks/useOperatorWebSocket";
 import { EventEnvelope, EventType } from "@samved/schemas";
+
+interface SafetyEvidence {
+  rule_id: string;
+  rule_version: string;
+  matched_category: string;
+  matched_phrase: string;
+  reason: string;
+  source_utterance_id?: string;
+  temporal_context: string;
+  negated: boolean;
+}
+
+interface SafetySignalItem {
+  signal_id: string;
+  signal_type: string;
+  severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW" | "INFO";
+  confidence: number;
+  evidence: SafetyEvidence;
+  rule_id: string;
+  rule_version: string;
+  call_id: string;
+  session_id: string;
+  requires_human_review: boolean;
+  acknowledged?: boolean;
+  acknowledged_at?: string;
+  acknowledged_by?: string;
+  created_at: string;
+}
 
 interface CallSummaryItem {
   session_id: string;
@@ -46,6 +78,9 @@ interface CallSummaryItem {
   duration_seconds: number;
   conversation_state: string;
   current_language: string;
+  safety_state?: string;
+  safety_signals?: SafetySignalItem[];
+  safety_signals_count?: number;
   utterances_count: number;
   events_count: number;
   is_active: boolean;
@@ -96,6 +131,42 @@ const SCENARIOS = [
     desc: "Caller blends Tamil and English. Orchestrator detects seamless language transitions.",
   },
   {
+    key: "ongoing_threat",
+    name: "Active Ongoing Physical Threat (en-IN)",
+    lang: "English (en-IN)",
+    desc: "Acute threat: 'He is breaking into my door and trying to hit me!'. Triggers ACTIVE_THREAT signal.",
+  },
+  {
+    key: "weapon_threat",
+    name: "Weapon Threat Compound Escalation",
+    lang: "English (en-IN)",
+    desc: "Compound threat: 'He has a knife and is breaking the door!'. Triggers CRITICAL weapon escalation.",
+  },
+  {
+    key: "self_harm",
+    name: "Self-Harm Risk Statement",
+    lang: "English (en-IN)",
+    desc: "Explicit ideation: 'I cannot take this anymore, I want to end my life'. Triggers SELF_HARM signal.",
+  },
+  {
+    key: "confinement",
+    name: "Forced Confinement / Restraint",
+    lang: "English (en-IN)",
+    desc: "Forced confinement: 'They locked me inside the room and won't let me out'. Triggers CONFINEMENT.",
+  },
+  {
+    key: "false_positive_weapon",
+    name: "Incidental Weapon Mention (False Positive Test)",
+    lang: "English (en-IN)",
+    desc: "Kitchen knife mention: 'Cutting vegetables with a knife'. Correctly avoids CRITICAL escalation.",
+  },
+  {
+    key: "negated_threat",
+    name: "Negated Threat Cue (Negation Test)",
+    lang: "English (en-IN)",
+    desc: "Explicit negation: 'There is no weapon here, he does not have a knife'. Yields NONE state.",
+  },
+  {
     key: "interruption",
     name: "Barge-in / Caller Interruption Test",
     lang: "Barge-in",
@@ -103,7 +174,7 @@ const SCENARIOS = [
   },
 ];
 
-type EventFilterCategory = "ALL" | "TRANSCRIPT" | "CONVERSATION" | "ERRORS" | "LATENCY";
+type EventFilterCategory = "ALL" | "TRANSCRIPT" | "CONVERSATION" | "SAFETY" | "ERRORS" | "LATENCY";
 
 export default function OperatorCallsPage() {
   // Call lists
@@ -124,6 +195,24 @@ export default function OperatorCallsPage() {
     tts_ms: 0,
     total_ms: 0,
   });
+
+  // Phase 4 Safety Engine State
+  const [safetyState, setSafetyState] = useState<string>("NONE");
+  const [safetySignals, setSafetySignals] = useState<SafetySignalItem[]>([]);
+  const [acknowledgingSignalId, setAcknowledgingSignalId] = useState<string | null>(null);
+  const [isSafetyLabOpen, setIsSafetyLabOpen] = useState<boolean>(false);
+  const [isSafetyRulesOpen, setIsSafetyRulesOpen] = useState<boolean>(false);
+  const [safetyRulesList, setSafetyRulesList] = useState<any[]>([]);
+  const [safetyEngineStatus, setSafetyEngineStatus] = useState<{
+    status: string;
+    engine_version: string;
+    rules_loaded_count: number;
+    rule_ids?: string[];
+  } | null>(null);
+  const [safetyLabInput, setSafetyLabInput] = useState<string>("He has a knife and is breaking into my door right now!");
+  const [safetyLabLang, setSafetyLabLang] = useState<string>("en-IN");
+  const [safetyLabResult, setSafetyLabResult] = useState<any>(null);
+  const [isEvaluatingSafety, setIsEvaluatingSafety] = useState<boolean>(false);
 
   // UI Modals & Filters
   const [eventFilter, setEventFilter] = useState<EventFilterCategory>("ALL");
@@ -268,6 +357,78 @@ export default function OperatorCallsPage() {
           fetchCalls(); // Refresh call lists
           break;
 
+        case EventType.SAFETY_SIGNAL:
+          if (payload) {
+            setSafetySignals((prev) => {
+              const sigId = String(payload.signal_id);
+              if (prev.some((s) => s.signal_id === sigId)) return prev;
+              const newSig: SafetySignalItem = {
+                signal_id: sigId,
+                signal_type: String(payload.signal_type || "ONGOING_THREAT"),
+                severity: (payload.severity as any) || "HIGH",
+                confidence: typeof payload.confidence === "number" ? payload.confidence : 1.0,
+                evidence: {
+                  rule_id: String(payload.rule_id || "SAFETY_RULE"),
+                  rule_version: String(payload.rule_version || "v1"),
+                  matched_category: String(payload.signal_type || "THREAT"),
+                  matched_phrase: String(payload.matched_phrase || ""),
+                  reason: String(payload.reason || "Deterministic safety signal matched"),
+                  temporal_context: String(payload.temporal_context || "PRESENT"),
+                  negated: Boolean(payload.negated),
+                },
+                rule_id: String(payload.rule_id || "SAFETY_RULE"),
+                rule_version: String(payload.rule_version || "v1"),
+                call_id: String(payload.call_id || eventCallId || ""),
+                session_id: String(payload.session_id || envelope.session_id || ""),
+                requires_human_review: payload.requires_human_review !== false,
+                acknowledged: Boolean(payload.acknowledged),
+                created_at: envelope.timestamp,
+              };
+              return [newSig, ...prev];
+            });
+            // Update call card in list
+            setActiveCalls((prev) =>
+              prev.map((c) =>
+                c.call_id === eventCallId
+                  ? {
+                      ...c,
+                      safety_signals_count: (c.safety_signals_count || 0) + 1,
+                      safety_state: payload.severity === "CRITICAL" ? "CRITICAL" : c.safety_state || "HIGH",
+                    }
+                  : c
+              )
+            );
+          }
+          break;
+
+        case EventType.SAFETY_STATE_UPDATED:
+          if (payload.current_state) {
+            setSafetyState(String(payload.current_state));
+            setActiveCalls((prev) =>
+              prev.map((c) =>
+                c.call_id === eventCallId ? { ...c, safety_state: String(payload.current_state) } : c
+              )
+            );
+          }
+          break;
+
+        case EventType.SAFETY_SIGNAL_ACKNOWLEDGED:
+          if (payload.signal_id) {
+            setSafetySignals((prev) =>
+              prev.map((s) =>
+                s.signal_id === payload.signal_id
+                  ? {
+                      ...s,
+                      acknowledged: true,
+                      acknowledged_at: String(payload.acknowledged_at || new Date().toISOString()),
+                      acknowledged_by: String(payload.acknowledged_by || "operator"),
+                    }
+                  : s
+              )
+            );
+          }
+          break;
+
         case EventType.TURN_LATENCY:
           setLatencies({
             stt_ms: Number(payload.stt_ms || 0),
@@ -298,9 +459,25 @@ export default function OperatorCallsPage() {
     }
   };
 
+  const fetchSafetyStatus = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/v1/safety/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setSafetyEngineStatus(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch safety status:", e);
+    }
+  };
+
   useEffect(() => {
     fetchCalls();
-    const interval = setInterval(fetchCalls, 8000);
+    fetchSafetyStatus();
+    const interval = setInterval(() => {
+      fetchCalls();
+      fetchSafetyStatus();
+    }, 8000);
     return () => clearInterval(interval);
   }, [apiUrl]);
 
@@ -310,11 +487,12 @@ export default function OperatorCallsPage() {
     setPartialDraft(null);
     subscribeCall(callId);
 
-    // Fetch call details and transcripts via REST snapshot
+    // Fetch call details, transcripts, and safety state via REST snapshot
     try {
-      const [trRes, evRes] = await Promise.all([
+      const [trRes, evRes, sRes] = await Promise.all([
         fetch(`${apiUrl}/v1/calls/${callId}/transcript`),
         fetch(`${apiUrl}/v1/calls/${callId}/events`),
+        fetch(`${apiUrl}/v1/safety/calls/${callId}`),
       ]);
 
       if (trRes.ok) {
@@ -341,8 +519,92 @@ export default function OperatorCallsPage() {
       } else {
         setCallEvents([]);
       }
+
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        setSafetyState(sData.safety_state || "NONE");
+        setSafetySignals(sData.safety_signals || []);
+      } else {
+        setSafetyState("NONE");
+        setSafetySignals([]);
+      }
     } catch (err) {
       console.error("Error loading call snapshot:", err);
+    }
+  };
+
+  // Acknowledge Safety Signal
+  const handleAcknowledgeSignal = async (signalId: string) => {
+    if (!selectedCallId) return;
+    setAcknowledgingSignalId(signalId);
+    try {
+      const res = await fetch(`${apiUrl}/v1/safety/calls/${selectedCallId}/acknowledge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signal_id: signalId,
+          acknowledged_by: "operator_console",
+        }),
+      });
+      if (res.ok) {
+        setSafetySignals((prev) =>
+          prev.map((s) =>
+            s.signal_id === signalId
+              ? {
+                  ...s,
+                  acknowledged: true,
+                  acknowledged_at: new Date().toISOString(),
+                  acknowledged_by: "operator_console",
+                }
+              : s
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Error acknowledging safety signal:", err);
+    } finally {
+      setAcknowledgingSignalId(null);
+    }
+  };
+
+  // Open Safety Rules Catalog
+  const openSafetyRulesCatalog = async () => {
+    setIsSafetyRulesOpen(true);
+    try {
+      const res = await fetch(`${apiUrl}/v1/safety/rules`);
+      if (res.ok) {
+        const data = await res.json();
+        setSafetyRulesList(data.rules || []);
+      }
+    } catch (err) {
+      console.error("Error fetching safety rules catalog:", err);
+    }
+  };
+
+  // Run Deterministic Safety Lab Evaluation
+  const runSafetyLabEvaluation = async () => {
+    setIsEvaluatingSafety(true);
+    try {
+      const start = performance.now();
+      const res = await fetch(`${apiUrl}/v1/safety/evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          utterance_text: safetyLabInput,
+          language: safetyLabLang,
+          call_id: "safety-lab-eval",
+          session_id: "safety-lab-sess",
+        }),
+      });
+      const elapsed = Math.round(performance.now() - start);
+      if (res.ok) {
+        const data = await res.json();
+        setSafetyLabResult({ ...data, latency_ms: elapsed });
+      }
+    } catch (err) {
+      console.error("Safety evaluation error:", err);
+    } finally {
+      setIsEvaluatingSafety(false);
     }
   };
 
@@ -405,6 +667,13 @@ export default function OperatorCallsPage() {
           type.includes("INTERRUPTED")
         );
       }
+      if (eventFilter === "SAFETY") {
+        return (
+          type.includes("SAFETY_") ||
+          type.includes("HUMAN_ALERT") ||
+          type.includes("RISK")
+        );
+      }
       if (eventFilter === "ERRORS") {
         return type.includes("ERROR") || type.includes("SIGNAL");
       }
@@ -436,13 +705,22 @@ export default function OperatorCallsPage() {
             <h1 className="text-sm font-semibold tracking-wide text-white flex items-center gap-2">
               SAMVED Operator Console
               <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-                Phase 3: Realtime Observation
+                Phase 4: Realtime Safety &amp; Oversight
               </span>
             </h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Safety Engine Status */}
+          <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-md border border-slate-800">
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+            <span>Safety Engine:</span>
+            <span className="font-mono font-semibold text-emerald-400">
+              {safetyEngineStatus ? `${safetyEngineStatus.engine_version} (${safetyEngineStatus.rules_loaded_count} rules)` : "v1 Ready"}
+            </span>
+          </div>
+
           {/* System Mode */}
           <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-md border border-slate-800">
             <Server className="h-3.5 w-3.5 text-slate-400" />
@@ -480,6 +758,27 @@ export default function OperatorCallsPage() {
             )}
           </div>
 
+          {/* Safety Rules Catalog Button */}
+          <button
+            onClick={openSafetyRulesCatalog}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium transition-all"
+            title="View loaded deterministic safety rules"
+          >
+            <FileText className="h-3.5 w-3.5 text-amber-400" />
+            <span>Rules Catalog</span>
+          </button>
+
+          {/* Safety Simulation Lab Button */}
+          <button
+            data-testid="open-safety-lab"
+            onClick={() => setIsSafetyLabOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 text-xs font-semibold transition-all"
+            title="Open Deterministic Safety Evaluation Lab"
+          >
+            <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
+            <span>Safety Lab</span>
+          </button>
+
           {/* Action Buttons */}
           <button
             onClick={() => setIsSimModalOpen(true)}
@@ -500,7 +799,7 @@ export default function OperatorCallsPage() {
       </header>
 
       {/* Main Workspace Layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-x-auto overflow-y-hidden">
         {/* Left Sidebar: Master Call List */}
         <aside className="w-80 border-r border-slate-800 bg-slate-900/40 flex flex-col shrink-0">
           {/* Tabs */}
@@ -582,9 +881,28 @@ export default function OperatorCallsPage() {
                     </div>
 
                     <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-800/60">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300">
-                        {getLanguageLabel(call.current_language)}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300">
+                          {getLanguageLabel(call.current_language)}
+                        </span>
+                        {call.safety_state && call.safety_state !== "NONE" ? (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${
+                              call.safety_state === "CRITICAL"
+                                ? "bg-red-500/20 text-red-300 border-red-500/40 animate-pulse"
+                                : call.safety_state === "HIGH"
+                                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                : "bg-yellow-500/20 text-yellow-300 border-yellow-500/40"
+                            }`}
+                          >
+                            {call.safety_state}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-800/40">
+                            NORMAL
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-slate-400 font-mono">
                         {call.conversation_state}
                       </span>
@@ -597,7 +915,7 @@ export default function OperatorCallsPage() {
         </aside>
 
         {/* Center: Call Detail & Live Transcripts */}
-        <main className="flex-1 flex flex-col bg-slate-950 overflow-hidden border-r border-slate-800">
+        <main className="flex-1 min-w-[360px] flex flex-col bg-slate-950 overflow-hidden border-r border-slate-800">
           {selectedCall ? (
             <>
               {/* Selected Call Header */}
@@ -687,6 +1005,165 @@ export default function OperatorCallsPage() {
                 </div>
               </div>
 
+              {/* Phase 4 Deterministic Safety Signals Oversight Banner */}
+              <div
+                data-testid="safety-engine-panel"
+                className={`mx-6 mt-4 p-4 rounded-xl border transition-all ${
+                  safetyState === "CRITICAL"
+                    ? "bg-red-950/40 border-red-600/80 text-red-100 shadow-lg shadow-red-950/50"
+                    : safetyState === "HIGH"
+                    ? "bg-amber-950/30 border-amber-500/70 text-amber-100 shadow-md shadow-amber-950/40"
+                    : safetyState === "ELEVATED"
+                    ? "bg-yellow-950/20 border-yellow-500/50 text-yellow-100"
+                    : safetyState === "WATCH"
+                    ? "bg-blue-950/20 border-blue-500/40 text-blue-100"
+                    : "bg-emerald-950/20 border-emerald-500/30 text-emerald-100"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`h-8 w-8 rounded-lg flex items-center justify-center ${
+                        safetyState === "CRITICAL"
+                          ? "bg-red-600 text-white animate-pulse"
+                          : safetyState === "HIGH"
+                          ? "bg-amber-500 text-slate-950 font-bold"
+                          : safetyState === "ELEVATED"
+                          ? "bg-yellow-500 text-slate-950 font-bold"
+                          : "bg-emerald-600 text-white"
+                      }`}
+                    >
+                      <ShieldAlert className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold tracking-wide uppercase">
+                          Safety Engine State:
+                        </span>
+                        <span
+                          data-testid="safety-state-badge"
+                          className={`text-xs px-2.5 py-0.5 rounded font-black tracking-wider ${
+                            safetyState === "CRITICAL"
+                              ? "bg-red-500 text-white animate-pulse"
+                              : safetyState === "HIGH"
+                              ? "bg-amber-500 text-slate-950"
+                              : safetyState === "ELEVATED"
+                              ? "bg-yellow-500 text-slate-950"
+                              : safetyState === "WATCH"
+                              ? "bg-blue-500 text-white"
+                              : "bg-emerald-600 text-white"
+                          }`}
+                        >
+                          {safetyState}
+                        </span>
+                        {safetyState !== "NONE" && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-red-900/60 text-red-200 border border-red-700 font-semibold uppercase tracking-wider">
+                            Requires Human Review
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1">
+                        {safetyState === "CRITICAL"
+                          ? "CRITICAL — Acute threat or weapon evidence detected. Human-in-the-loop intervention required."
+                          : safetyState === "HIGH"
+                          ? "HIGH — Threat evidence detected. Human review required for escalation decision."
+                          : safetyState === "ELEVATED"
+                          ? "ELEVATED — Potential risk cue identified. System is actively monitoring context."
+                          : safetyState === "WATCH"
+                          ? "WATCH — Precautionary indicators logged. Normal conversational flow continuing."
+                          : "NORMAL — No active threat indicators detected. Deterministic safety rules active."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+                    <span>Active Signals: {safetySignals.length}</span>
+                  </div>
+                </div>
+
+                {/* Active Safety Signals List */}
+                {safetySignals.length > 0 && (
+                  <div className="mt-3.5 space-y-2 border-t border-slate-800/80 pt-3">
+                    {safetySignals.map((sig) => (
+                      <div
+                        key={sig.signal_id}
+                        data-testid="safety-signal-card"
+                        className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-4 ${
+                          sig.severity === "CRITICAL"
+                            ? "bg-red-950/60 border-red-600/80 text-red-100"
+                            : sig.severity === "HIGH"
+                            ? "bg-amber-950/50 border-amber-600/70 text-amber-100"
+                            : "bg-slate-900 border-slate-800 text-slate-200"
+                        }`}
+                      >
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded font-black tracking-wider ${
+                                sig.severity === "CRITICAL"
+                                  ? "bg-red-600 text-white"
+                                  : sig.severity === "HIGH"
+                                  ? "bg-amber-500 text-slate-950"
+                                  : "bg-blue-600 text-white"
+                              }`}
+                            >
+                              {sig.severity}
+                            </span>
+                            <span className="font-mono text-xs font-bold text-white">
+                              {sig.signal_type}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              [{sig.rule_id} {sig.rule_version}]
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
+                              {sig.evidence.temporal_context}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-200">
+                            <strong className="text-white">Why:</strong> {sig.evidence.reason}
+                          </p>
+
+                          {sig.evidence.matched_phrase && (
+                            <p className="text-[11px] text-slate-400 font-mono">
+                              Matched: &ldquo;<span className="text-amber-300 underline font-semibold">{sig.evidence.matched_phrase}</span>&rdquo;
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="shrink-0 flex items-center">
+                          {sig.acknowledged ? (
+                            <div className="text-xs text-emerald-400 flex items-center gap-1.5 bg-emerald-950/60 px-3 py-1.5 rounded-md border border-emerald-800 font-medium">
+                              <CheckCircle2 className="h-4 w-4" />
+                              <span>Acknowledged by {sig.acknowledged_by || "operator"}</span>
+                            </div>
+                          ) : (
+                            <button
+                              data-testid="acknowledge-safety-alert"
+                              disabled={acknowledgingSignalId === sig.signal_id}
+                              onClick={() => handleAcknowledgeSignal(sig.signal_id)}
+                              className="px-3.5 py-2 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                              {acknowledgingSignalId === sig.signal_id ? (
+                                <>
+                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                  Acknowledging...
+                                </>
+                              ) : (
+                                <>
+                                  <CheckSquare className="h-3.5 w-3.5" />
+                                  Acknowledge Alert
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Live Transcript Chronological Stream */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {transcripts.length === 0 && !partialDraft ? (
@@ -733,6 +1210,12 @@ export default function OperatorCallsPage() {
                               {item.intent && (
                                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-900/60 text-indigo-300 font-mono">
                                   {item.intent}
+                                </span>
+                              )}
+                              {item.safety_flag && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800 font-bold flex items-center gap-1 animate-pulse">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  Safety Flagged
                                 </span>
                               )}
                             </div>
@@ -932,8 +1415,8 @@ export default function OperatorCallsPage() {
       {/* Simulation Runner Modal */}
       {isSimModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Play className="h-4 w-4 text-indigo-400" />
                 Launch Multi-turn Conversation Simulation
@@ -946,12 +1429,12 @@ export default function OperatorCallsPage() {
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Select Evaluation Scenario:
                 </label>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                   {SCENARIOS.map((sc) => (
                     <div
                       key={sc.key}
@@ -1011,6 +1494,344 @@ export default function OperatorCallsPage() {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Rules Catalog Modal */}
+      {isSafetyRulesOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    Deterministic Safety Rules Catalog
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-amber-400 font-mono border border-slate-700">
+                      v1.0.0
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Explicit, version-controlled rules executed in &lt;5ms offline without LLM hallucination.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSafetyRulesOpen(false)}
+                className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              {safetyRulesList.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-indigo-400" />
+                  <p className="text-xs">Loading safety rules from engine registry...</p>
+                </div>
+              ) : (
+                safetyRulesList.map((rule) => (
+                  <div
+                    key={rule.rule_id}
+                    className="p-4 rounded-lg bg-slate-950/80 border border-slate-800 space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-white">{rule.rule_id}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                          {rule.rule_version}
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                            rule.default_severity === "CRITICAL"
+                              ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                              : rule.default_severity === "HIGH"
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                          }`}
+                        >
+                          {rule.default_severity}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {rule.target_languages?.map((lang: string) => (
+                          <span
+                            key={lang}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-indigo-300 font-mono"
+                          >
+                            {lang}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-300">{rule.description}</p>
+
+                    {rule.negative_examples && rule.negative_examples.length > 0 && (
+                      <div className="bg-slate-900/60 p-2.5 rounded border border-slate-800/80 text-xs">
+                        <span className="text-slate-400 font-medium">Negative / False-Positive Safeguards:</span>
+                        <ul className="list-disc list-inside mt-1 text-slate-400 space-y-0.5 text-[11px] font-mono">
+                          {rule.negative_examples.slice(0, 3).map((ex: string, i: number) => (
+                            <li key={i} className="truncate">
+                              &ldquo;{ex}&rdquo;
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Simulation Lab Modal */}
+      {isSafetyLabOpen && (
+        <div
+          data-testid="safety-lab-modal"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <ShieldAlert className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    Deterministic Safety Evaluation Lab
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">
+                      Sub-5ms Deterministic
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Verify multilingual trigger evaluation, negation immunity, and explainable audit evidence.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSafetyLabOpen(false)}
+                className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              {/* Presets Bar */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-2">
+                  Test Case Presets:
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => {
+                      setSafetyLabInput("He has a knife and is breaking into my door right now!");
+                      setSafetyLabLang("en-IN");
+                    }}
+                    className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-red-300 border border-red-500/30 font-medium"
+                  >
+                    Active Weapon Threat
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSafetyLabInput("I was in the kitchen cutting vegetables with a knife");
+                      setSafetyLabLang("en-IN");
+                    }}
+                    className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-medium"
+                  >
+                    False Positive (Cooking Knife)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSafetyLabInput("There is no weapon here, he does not have a knife");
+                      setSafetyLabLang("en-IN");
+                    }}
+                    className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-medium"
+                  >
+                    Negated Threat Cue
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSafetyLabInput("I want to end my life, I have pills and I cannot go on anymore");
+                      setSafetyLabLang("en-IN");
+                    }}
+                    className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 font-medium"
+                  >
+                    Self-Harm Crisis
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSafetyLabInput("என்னை அடிக்கிறார், எனக்கு ரொம்ப பயமாக இருக்கிறது காப்பாற்றுங்கள்");
+                      setSafetyLabLang("ta-IN");
+                    }}
+                    className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-medium"
+                  >
+                    Tamil Physical Threat
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSafetyLabInput("उसके हाथ में चाकू है और वह मुझे मार डालेगा");
+                      setSafetyLabLang("hi-IN");
+                    }}
+                    className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-medium"
+                  >
+                    Hindi Weapon Threat
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSafetyLabInput("They locked me inside the room and won't let me out");
+                      setSafetyLabLang("en-IN");
+                    }}
+                    className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-yellow-300 border border-yellow-500/30 font-medium"
+                  >
+                    Forced Confinement
+                  </button>
+                </div>
+              </div>
+
+              {/* Input Configuration */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">Utterance Text:</label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Language:</span>
+                    <select
+                      data-testid="safety-lab-lang"
+                      value={safetyLabLang}
+                      onChange={(e) => setSafetyLabLang(e.target.value)}
+                      className="bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-xs text-white focus:border-indigo-500 focus:outline-none"
+                    >
+                      <option value="en-IN">English (en-IN)</option>
+                      <option value="ta-IN">Tamil (ta-IN)</option>
+                      <option value="hi-IN">Hindi (hi-IN)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <textarea
+                  data-testid="safety-lab-input"
+                  rows={3}
+                  value={safetyLabInput}
+                  onChange={(e) => setSafetyLabInput(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-white font-sans focus:border-amber-500 focus:outline-none resize-none"
+                  placeholder="Enter utterance transcript to evaluate..."
+                />
+
+                <div className="flex justify-end">
+                  <button
+                    data-testid="safety-lab-eval-btn"
+                    disabled={isEvaluatingSafety || !safetyLabInput.trim()}
+                    onClick={runSafetyLabEvaluation}
+                    className="px-4 py-2 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md flex items-center gap-2 disabled:opacity-50 transition-all"
+                  >
+                    {isEvaluatingSafety ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Evaluating Deterministically...
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Evaluate Deterministically
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Evaluation Results */}
+              {safetyLabResult && (
+                <div className="border-t border-slate-800 pt-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-400 uppercase">Assessment State:</span>
+                      <span
+                        data-testid="safety-lab-state"
+                        className={`text-xs px-2.5 py-0.5 rounded font-black tracking-wider ${
+                          safetyLabResult.safety_state === "CRITICAL"
+                            ? "bg-red-500 text-white animate-pulse"
+                            : safetyLabResult.safety_state === "HIGH"
+                            ? "bg-amber-500 text-slate-950"
+                            : safetyLabResult.safety_state === "ELEVATED"
+                            ? "bg-yellow-500 text-slate-950"
+                            : "bg-emerald-600 text-white"
+                        }`}
+                      >
+                        {safetyLabResult.safety_state}
+                      </span>
+                      {safetyLabResult.requires_human_review && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-red-900/60 text-red-200 border border-red-700 font-semibold uppercase">
+                          Requires Human Review
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs font-mono">
+                      <span className="text-slate-400">Deterministic Latency:</span>
+                      <span className="text-emerald-400 font-bold">{safetyLabResult.latency_ms}ms</span>
+                    </div>
+                  </div>
+
+                  {/* Signals List */}
+                  {safetyLabResult.signals && safetyLabResult.signals.length > 0 ? (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-slate-300">
+                        Generated Safety Signals ({safetyLabResult.signals.length}):
+                      </label>
+                      {safetyLabResult.signals.map((sig: any, i: number) => (
+                        <div
+                          key={i}
+                          className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs space-y-1"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                                  sig.severity === "CRITICAL"
+                                    ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                                    : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                }`}
+                              >
+                                {sig.severity}
+                              </span>
+                              <span className="font-mono font-bold text-white">{sig.signal_type}</span>
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                [{sig.evidence?.rule_id} {sig.evidence?.rule_version}]
+                              </span>
+                            </div>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 font-mono">
+                              Temporal: {sig.evidence?.temporal_context}
+                            </span>
+                          </div>
+                          <p className="text-slate-300 mt-1">
+                            <strong className="text-white">Reason:</strong> {sig.evidence?.reason}
+                          </p>
+                          {sig.evidence?.matched_phrase && (
+                            <p className="text-[11px] text-slate-400 font-mono">
+                              Matched Phrase: &ldquo;
+                              <span className="text-amber-300 font-bold">{sig.evidence.matched_phrase}</span>
+                              &rdquo;
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-xs text-emerald-300 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+                      <span>No safety threats detected. All deterministic safety rules passed.</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

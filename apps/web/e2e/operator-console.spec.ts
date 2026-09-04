@@ -6,7 +6,7 @@ test.describe("SAMVED Phase 3 Operator Console E2E", () => {
 
     // 1. Verify header title & branding
     await expect(page.locator("text=SAMVED Operator Console")).toBeVisible();
-    await expect(page.locator("text=Phase 3: Realtime Observation")).toBeVisible();
+    await expect(page.locator("text=Phase 4: Realtime Safety & Oversight")).toBeVisible();
 
     // 2. Verify Mode pill
     await expect(page.locator("text=Mode:")).toBeVisible();

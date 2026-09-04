@@ -1,0 +1,96 @@
+[
+  {
+    "rule_id": "SAFETY_WEAPON_THREAT_001",
+    "rule_version": "v1",
+    "category": "WEAPON_MENTION",
+    "signal_type": "WEAPON_MENTION",
+    "severity": "CRITICAL",
+    "requires_human_review": true,
+    "description": "Caller indicates a weapon is present and being used to threaten or harm.",
+    "reason": "Caller indicated a weapon is actively present with threatening or hostile intent.",
+    "languages": ["en-IN", "ta-IN", "hi-IN"],
+    "patterns": {
+      "en-IN": [
+        "has a knife and",
+        "holding a knife",
+        "pointing a gun",
+        "has a gun",
+        "threatening with a knife",
+        "threatening with a weapon",
+        "coming with a knife",
+        "knife in his hand",
+        "he has a blade",
+        "brought a weapon"
+      ],
+      "ta-IN": [
+        "கத்தி வச்சிருக்கான்",
+        "கத்தியோட வரான்",
+        "துப்பாக்கி வச்சிருக்கான்",
+        "கத்தி காட்டி மிரட்டுறான்",
+        "kathi vachirukan",
+        "kathiyoda varan",
+        "thuppaki vachirukan",
+        "kathi kaati miraturan",
+        "kaila kathi irukku"
+      ],
+      "hi-IN": [
+        "चाकू लेकर आ रहा",
+        "हाथ में चाकू है",
+        "बंदूक दिखा रहा है",
+        "हथियार लेकर आया",
+        "चाकू से डरा रहा",
+        "chaaku lekar aa raha",
+        "haath mein chaaku",
+        "bandook dikha raha hai",
+        "hathiyar lekar aaya",
+        "chaaku se dara raha"
+      ]
+    },
+    "temporal_requirement": "PRESENT",
+    "negation_sensitive": true,
+    "negative_examples": [
+      "He does not have a weapon",
+      "There was no knife",
+      "I saw a knife in a movie",
+      "I used a kitchen knife for cooking"
+    ]
+  },
+  {
+    "rule_id": "SAFETY_WEAPON_ISOLATED_001",
+    "rule_version": "v1",
+    "category": "WEAPON_MENTION",
+    "signal_type": "WEAPON_MENTION",
+    "severity": "LOW",
+    "requires_human_review": false,
+    "description": "Incidental mention of a weapon term without explicit active threat cues.",
+    "reason": "Weapon term detected in conversation without immediate hostile threat context.",
+    "languages": ["en-IN", "ta-IN", "hi-IN"],
+    "patterns": {
+      "en-IN": [
+        "knife",
+        "gun",
+        "pistol",
+        "weapon"
+      ],
+      "ta-IN": [
+        "கத்தி",
+        "துப்பாக்கி",
+        "kathi",
+        "thuppaki"
+      ],
+      "hi-IN": [
+        "चाकू",
+        "बंदूक",
+        "हथियार",
+        "chaaku",
+        "bandook"
+      ]
+    },
+    "temporal_requirement": "ANY",
+    "negation_sensitive": true,
+    "negative_examples": [
+      "no weapon",
+      "he has no knife"
+    ]
+  }
+]

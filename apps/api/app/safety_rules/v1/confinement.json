@@ -1,0 +1,52 @@
+[
+  {
+    "rule_id": "SAFETY_CONFINEMENT_001",
+    "rule_version": "v1",
+    "category": "CONFINEMENT",
+    "signal_type": "CONFINEMENT",
+    "severity": "HIGH",
+    "requires_human_review": true,
+    "description": "Caller reports being locked in, held captive, or forcibly prevented from leaving.",
+    "reason": "Caller indicated they are forcibly confined or physically prevented from leaving their location.",
+    "languages": ["en-IN", "ta-IN", "hi-IN"],
+    "patterns": {
+      "en-IN": [
+        "locked me inside",
+        "locked inside the room",
+        "cannot leave the room",
+        "not letting me leave",
+        "keeping me here against my will",
+        "locked the door from outside",
+        "trapped in the room",
+        "they took my keys and locked"
+      ],
+      "ta-IN": [
+        "பூட்டி வச்சிருக்காங்க",
+        "உள்ளே பூட்டிட்டாங்க",
+        "வெளியே போக விட மாட்டேங்குறாங்க",
+        "ரூமுக்குள்ள அடைச்சிட்டாங்க",
+        "pooti vachirukanga",
+        "ulla pootitanga",
+        "veliya poga vida maatendranga",
+        "room kulla adaichitanga"
+      ],
+      "hi-IN": [
+        "कमरे में बंद कर दिया",
+        "अंदर बंद करके रखा है",
+        "बाहर नहीं जाने दे रहे",
+        "ताला लगा दिया बाहर से",
+        "kamre mein band kar diya",
+        "andar band karke rakha",
+        "bahar nahi jaane de rahe",
+        "taala laga diya bahar se"
+      ]
+    },
+    "temporal_requirement": "PRESENT",
+    "negation_sensitive": true,
+    "negative_examples": [
+      "I don't want to leave the house",
+      "I decided to stay in my room",
+      "I was locked inside yesterday but now I am free"
+    ]
+  }
+]

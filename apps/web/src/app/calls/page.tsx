@@ -713,7 +713,10 @@ export default function OperatorCallsPage() {
 
         <div className="flex items-center gap-3">
           {/* Safety Engine Status */}
-          <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-md border border-slate-800">
+          <div
+            data-testid="safety-engine-status"
+            className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-md border border-slate-800 shrink-0"
+          >
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
             <span>Safety Engine:</span>
             <span className="font-mono font-semibold text-emerald-400">

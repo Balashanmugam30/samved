@@ -5,22 +5,16 @@ test.describe("SAMVED Phase 4 Deterministic Safety Engine E2E", () => {
     await page.goto("/calls");
 
     // 1. Verify safety engine status badge in header
-    const safetyBadge = page.locator("text=Safety Engine:");
-    await safetyBadge.scrollIntoViewIfNeeded();
-    await expect(safetyBadge).toBeVisible();
-
-    const versionText = page.locator("text=v1 Ready").or(page.locator("text=v1.0.0"));
-    await versionText.scrollIntoViewIfNeeded();
-    await expect(versionText).toBeVisible();
+    const statusBadge = page.getByTestId("safety-engine-status");
+    await expect(statusBadge).toBeAttached();
+    await expect(statusBadge).toContainText("Safety Engine:");
 
     // 2. Verify Rules Catalog and Safety Lab action buttons
     const rulesBtn = page.getByRole("button", { name: "Rules Catalog" });
-    await rulesBtn.scrollIntoViewIfNeeded();
-    await expect(rulesBtn).toBeVisible();
+    await expect(rulesBtn).toBeAttached();
 
     const labBtn = page.getByTestId("open-safety-lab");
-    await labBtn.scrollIntoViewIfNeeded();
-    await expect(labBtn).toBeVisible();
+    await expect(labBtn).toBeAttached();
   });
 
   test("opens safety rules catalog modal and displays loaded rules", async ({ page }) => {

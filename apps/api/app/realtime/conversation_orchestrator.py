@@ -406,11 +406,24 @@ class ConversationOrchestrator:
     async def _execute_ai_turn(self, caller_utterance: Utterance) -> None:
         """Executes LLM reasoning and TTS playback for an AI response turn."""
         try:
-            self.transition_state(ConversationState.THINKING, reason="ai_reasoning_started")
             self.broadcast(
                 "AI_THINKING",
                 {"session_id": self.session_id, "call_id": self.call_id, "prompt": caller_utterance.text},
             )
+
+            # Phase 8: Check if Operator Takeover (HUMAN_ACTIVE) or Adaptive Paused
+            try:
+                from app.operator.service import operator_service
+                if operator_service.is_human_active(self.call_id) or operator_service.is_adaptive_paused(self.call_id):
+                    logger.info(
+                        f"AI speech generation suppressed for call {self.call_id} (Human active or adaptive paused)"
+                    )
+                    self.transition_state(ConversationState.LISTENING, reason="operator_control_suppressed_ai_turn")
+                    return
+            except Exception as e:
+                logger.debug(f"Operator control check error: {e}")
+
+            self.transition_state(ConversationState.THINKING, reason="ai_reasoning_started")
 
             # Check if adaptive strategy calls for direct deterministic response template
             strategy = self.latest_adaptive_strategy

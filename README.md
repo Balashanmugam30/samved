@@ -203,14 +203,16 @@ pnpm dev:web
 
 | Task | Command | Description |
 | :--- | :--- | :--- |
-| **Backend Tests** | `uv run pytest apps/api/tests -v` | Runs 52 unit, state machine, webhook, concurrency, operator WS, and contract tests |
-| **Contract Flow Test** | `uv run pytest apps/api/tests/test_contract_flow.py -v` | Validates end-to-end event schema transport |
-| **Operator WS Test** | `uv run pytest apps/api/tests/test_operator_ws.py -v` | Validates operator snapshot, subscription, and cross-call isolation |
-| **Calls API Test** | `uv run pytest apps/api/tests/test_calls_api.py -v` | Validates REST snapshots for calls, transcripts, and events |
-| **Concurrency Test** | `uv run pytest apps/api/tests/test_telephony_concurrency.py -v` | Validates 5 concurrent calls with zero crosstalk |
+| **Backend Tests** | `uv --directory apps/api run pytest -v` | Runs 158 unit, integration, safety, SVI, acoustic, adaptive, and operator tests |
+| **Contract Flow Test** | `uv --directory apps/api run pytest tests/test_contract_flow.py -v` | Validates end-to-end event schema transport |
+| **Operator Tests** | `uv --directory apps/api run pytest tests/test_operator_*.py -v` | Validates workstation actions, handoff lifecycle, notes, and audit logging |
+| **Safety Tests** | `uv --directory apps/api run pytest tests/test_safety_*.py -v` | Validates deterministic safety engine rules and concurrency |
+| **SVI Tests** | `uv --directory apps/api run pytest tests/test_svi_*.py -v` | Validates explainable Stress Vulnerability Index and bounds |
+| **Acoustic Tests** | `uv --directory apps/api run pytest tests/test_acoustic_*.py -v` | Validates paralinguistic acoustic signal extraction |
+| **Adaptive Tests** | `uv --directory apps/api run pytest tests/test_adaptive_*.py -v` | Validates deterministic conversational policy and overrides |
 | **Frontend Type Check** | `pnpm type-check` | Type-checks all TypeScript packages & web app |
 | **Frontend Build** | `pnpm build` | Compiles production Next.js web application |
-| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 12 browser E2E tests (Desktop + Mobile Chrome) |
+| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 60 browser E2E tests (Desktop + Mobile Chrome across all phases) |
 | **Telephony Diagnostics** | `curl http://localhost:8000/v1/telephony/doctor` | Safe credential and public ingress check without secrets |
 | **Docker Compose** | `docker compose up -d` | Starts PostgreSQL, Redis, API, and Web containers |
 
@@ -224,7 +226,7 @@ pnpm dev:web
 
 ---
 
-## 12. Implementation Status (Phase 6 Complete)
+## 12. Implementation Status (Phase 8 Complete)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -266,7 +268,13 @@ pnpm dev:web
 | **Acoustic Paralinguistic Feature Extraction & Signal Layer** | ✅ | Phase 6 |
 | **Operator Acoustic Signals Panel & Simulation Lab** | ✅ | Phase 6 |
 | **Acoustic REST APIs (`/v1/acoustic/...`) & Realtime Ingress** | ✅ | Phase 6 |
-| **Adaptive Multilingual Dialogue** | ⏳ | Phase 7 |
+| **Adaptive Multilingual Conversation Policy (P0–P5, Validator)** | ✅ | Phase 7 |
+| **Adaptive Panel, Operator Overrides & Trajectory History** | ✅ | Phase 7 |
+| **Human Operator Console & Tele-Counselor Workstation** | ✅ | Phase 8 |
+| **Unified Call Triage Summary (5 Dimensions + Non-Clinical Disclaimer)** | ✅ | Phase 8 |
+| **Operator Takeover, Pause/Resume, Safety Check & End Call Controls** | ✅ | Phase 8 |
+| **Multi-Stage Counselor Handoff Lifecycle & Confirmation Guard** | ✅ | Phase 8 |
+| **Append-Only Structured Operator Notes & Auditable Timeline** | ✅ | Phase 8 |
 | **Multi-Agent Orchestrator** | ⏳ | Phase 9 |
 | **Statutory & Scheme RAG (NDPS / IRCA)** | ⏳ | Phase 10 |
 | **Longitudinal Case Intelligence** | ⏳ | Phase 11 |

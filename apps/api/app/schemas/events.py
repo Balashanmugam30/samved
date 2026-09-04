@@ -49,6 +49,18 @@ class EventType(str, Enum):
     ESCALATION_ACCEPTED = "ESCALATION_ACCEPTED"
     ESCALATION_OVERRIDDEN = "ESCALATION_OVERRIDDEN"
 
+    # Human Operator Workstation (Phase 8)
+    OPERATOR_TAKEOVER = "OPERATOR_TAKEOVER"
+    OPERATOR_RESUME_AI = "OPERATOR_RESUME_AI"
+    OPERATOR_PAUSE_ADAPTIVE = "OPERATOR_PAUSE_ADAPTIVE"
+    OPERATOR_REQUEST_SAFETY_CHECK = "OPERATOR_REQUEST_SAFETY_CHECK"
+    OPERATOR_HANDOFF_REQUESTED = "OPERATOR_HANDOFF_REQUESTED"
+    OPERATOR_HANDOFF_CONFIRMED = "OPERATOR_HANDOFF_CONFIRMED"
+    OPERATOR_HANDOFF_CANCELLED = "OPERATOR_HANDOFF_CANCELLED"
+    OPERATOR_NOTE_ADDED = "OPERATOR_NOTE_ADDED"
+    OPERATOR_CALL_ENDED = "OPERATOR_CALL_ENDED"
+    OPERATOR_STATE_CHANGED = "OPERATOR_STATE_CHANGED"
+
     # Case & follow-up
     CASE_CREATED = "CASE_CREATED"
     FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED"
@@ -154,6 +166,69 @@ class AdaptiveStrategySelectedPayload(BaseModel):
         "medical, diagnostic, legal, credibility, lie-detection, or autonomous emergency-dispatch system."
     )
     evaluated_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+class OperatorOwnershipState(str, Enum):
+    UNASSIGNED = "UNASSIGNED"
+    AI_ASSISTED = "AI_ASSISTED"
+    HUMAN_ASSIGNED = "HUMAN_ASSIGNED"
+    HUMAN_ACTIVE = "HUMAN_ACTIVE"
+    HANDOFF_PENDING = "HANDOFF_PENDING"
+    ENDED = "ENDED"
+
+
+class HandoffStatus(str, Enum):
+    AVAILABLE = "AVAILABLE"
+    REQUESTED = "REQUESTED"
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    CANCELLED = "CANCELLED"
+    FAILED = "FAILED"
+
+
+class OperatorNoteCategory(str, Enum):
+    GENERAL = "GENERAL"
+    SAFETY = "SAFETY"
+    FOLLOW_UP_NOTE = "FOLLOW_UP_NOTE"
+    HANDOFF_NOTE = "HANDOFF_NOTE"
+    TECHNICAL = "TECHNICAL"
+
+
+class OperatorNotePayload(BaseModel):
+    note_id: str
+    call_id: str
+    operator_id: str = "operator"
+    category: OperatorNoteCategory = OperatorNoteCategory.GENERAL
+    text: str
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    is_structured: bool = True
+
+
+class OperatorActionPayload(BaseModel):
+    action_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    call_id: str
+    actor_id: str = "operator"
+    action_type: str
+    previous_state: Optional[str] = None
+    new_state: Optional[str] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
+    summary: str
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+class OperatorStateChangedPayload(BaseModel):
+    call_id: str
+    ownership_state: OperatorOwnershipState = OperatorOwnershipState.AI_ASSISTED
+    handoff_status: HandoffStatus = HandoffStatus.AVAILABLE
+    adaptive_paused: bool = False
+    active_operator_id: Optional[str] = None
+    updated_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 

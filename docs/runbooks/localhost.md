@@ -127,3 +127,61 @@ curl -X POST http://localhost:8000/v1/adaptive/calls/CALL_ID/override \
    - Select presets (*Critical Threat*, *High Vulnerability*, *Degraded Audio*, *Human Request*, *Caller Refusal*, *Closure Ready*).
    - Click **Run Adaptive Strategy Evaluation** to inspect live deterministic strategy outputs and fallback responses.
 
+---
+
+## 5. Verifying Phase 8 Human Operator Workstation
+
+### 5.1 Workstation & Subsystems Status
+```bash
+curl http://localhost:8000/v1/operator/status
+```
+Returns comprehensive operational health of safety, SVI, acoustic, adaptive, and telephony subsystems.
+
+### 5.2 Operator Actions via REST
+```bash
+# Human Takeover
+curl -X POST http://localhost:8000/v1/operator/calls/CALL_ID/takeover \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Operator initiated human takeover", "operator_id": "op_01"}'
+
+# Pause / Resume Adaptive AI
+curl -X POST http://localhost:8000/v1/operator/calls/CALL_ID/pause \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Pause for sensitive disclosure", "operator_id": "op_01"}'
+
+curl -X POST http://localhost:8000/v1/operator/calls/CALL_ID/resume \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Resume AI support", "operator_id": "op_01"}'
+
+# Add Structured Note
+curl -X POST http://localhost:8000/v1/operator/calls/CALL_ID/notes \
+  -H "Content-Type: application/json" \
+  -d '{"category": "SAFETY", "text": "Caller confirmed in secure location", "operator_id": "op_01"}'
+
+# Request and Confirm Handoff
+curl -X POST http://localhost:8000/v1/operator/calls/CALL_ID/handoff \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Escalation to Tier-2 counselor", "operator_id": "op_01"}'
+
+curl -X POST http://localhost:8000/v1/operator/calls/CALL_ID/handoff/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"transfer_confirmed_by": "supervisor_01", "target_agent": "tier2_counselor"}'
+```
+
+### 5.3 Workstation UI Testing
+1. Navigate to `http://localhost:3000/calls`.
+2. Inspect the **Master Call List**:
+   - Filter active calls using queue pills: `All`, `Critical`, `Elevated`, `Takeover`, `High SVI`.
+3. Inspect the **Active Call Header**:
+   - Masked phone number (`+91******3210`), call ID, provider, and `AI_ASSISTED` / `HUMAN_ACTIVE` ownership badge.
+4. Inspect the **Operator Control Bar**:
+   - Click **Take Over**: transitions ownership to `HUMAN_ACTIVE` and suppresses autonomous AI speech.
+   - Click **Pause Adaptive**: pauses automated AI prompts, changes badge to `AI Paused`, and displays **Resume Adaptive**.
+   - Click **Request Safety Check**: triggers immediate deterministic safety verification banner.
+   - Click **Request Handoff**: transitions handoff status to `REQUESTED`, revealing `Confirm Handoff` and `Cancel`.
+   - Click **Notes**: opens structured notes modal with category selector (`GENERAL`, `SAFETY`, `FOLLOW_UP_NOTE`, `HANDOFF_NOTE`, `TECHNICAL`), append-only input, and chronological notes audit trail.
+   - Click **End Call**: prompts confirmation modal before terminating session.
+5. Inspect the **Unified Call Triage Summary**:
+   - Synthesizes Safety State, SVI Index (0–100), Acoustic Signal, Adaptive Policy, and Human Authority dimensions with mandatory non-clinical advisory disclaimer.
+6. Inspect the **Event Timeline**:
+   - Filter stream by `OPERATOR`, `SAFETY`, `SVI`, `ACOUSTIC`, `ADAPTIVE`, `TRANSCRIPT`, `CONVERSATION`, `ERRORS`, `LATENCY`.

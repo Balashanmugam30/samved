@@ -124,6 +124,37 @@ CREATE TABLE IF NOT EXISTS model_runs (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 8. Operator Workstation (Phase 8)
+CREATE TABLE IF NOT EXISTS operator_notes (
+    id VARCHAR(36) PRIMARY KEY,
+    call_id VARCHAR(36) NOT NULL REFERENCES calls(id),
+    operator_id VARCHAR(36) DEFAULT 'operator',
+    category VARCHAR(50) NOT NULL DEFAULT 'GENERAL',
+    text TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS operator_actions (
+    id VARCHAR(36) PRIMARY KEY,
+    call_id VARCHAR(36) NOT NULL REFERENCES calls(id),
+    actor_id VARCHAR(36) DEFAULT 'operator',
+    action_type VARCHAR(50) NOT NULL,
+    previous_state VARCHAR(50),
+    new_state VARCHAR(50),
+    details JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS call_operator_states (
+    call_id VARCHAR(36) PRIMARY KEY REFERENCES calls(id),
+    ownership_state VARCHAR(50) NOT NULL DEFAULT 'UNASSIGNED',
+    handoff_status VARCHAR(50) NOT NULL DEFAULT 'AVAILABLE',
+    adaptive_paused BOOLEAN DEFAULT FALSE,
+    active_operator_id VARCHAR(36),
+    handoff_target VARCHAR(100),
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Seed baseline roles
 INSERT INTO roles (id, name, permissions) VALUES
     ('role-admin', 'ADMIN', '["*"]'::jsonb),

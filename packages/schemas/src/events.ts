@@ -49,6 +49,18 @@ export enum EventType {
   ESCALATION_ACCEPTED = "ESCALATION_ACCEPTED",
   ESCALATION_OVERRIDDEN = "ESCALATION_OVERRIDDEN",
 
+  // Human Operator Workstation (Phase 8)
+  OPERATOR_TAKEOVER = "OPERATOR_TAKEOVER",
+  OPERATOR_RESUME_AI = "OPERATOR_RESUME_AI",
+  OPERATOR_PAUSE_ADAPTIVE = "OPERATOR_PAUSE_ADAPTIVE",
+  OPERATOR_REQUEST_SAFETY_CHECK = "OPERATOR_REQUEST_SAFETY_CHECK",
+  OPERATOR_HANDOFF_REQUESTED = "OPERATOR_HANDOFF_REQUESTED",
+  OPERATOR_HANDOFF_CONFIRMED = "OPERATOR_HANDOFF_CONFIRMED",
+  OPERATOR_HANDOFF_CANCELLED = "OPERATOR_HANDOFF_CANCELLED",
+  OPERATOR_NOTE_ADDED = "OPERATOR_NOTE_ADDED",
+  OPERATOR_CALL_ENDED = "OPERATOR_CALL_ENDED",
+  OPERATOR_STATE_CHANGED = "OPERATOR_STATE_CHANGED",
+
   // Case & follow-up
   CASE_CREATED = "CASE_CREATED",
   FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED",
@@ -193,4 +205,61 @@ export interface AdaptiveStrategySelectedPayload {
   fallback_applied?: boolean;
   disclaimer?: string;
   evaluated_at: string;
+}
+
+export enum OperatorOwnershipState {
+  UNASSIGNED = "UNASSIGNED",
+  AI_ASSISTED = "AI_ASSISTED",
+  HUMAN_ASSIGNED = "HUMAN_ASSIGNED",
+  HUMAN_ACTIVE = "HUMAN_ACTIVE",
+  HANDOFF_PENDING = "HANDOFF_PENDING",
+  ENDED = "ENDED"
+}
+
+export enum HandoffStatus {
+  AVAILABLE = "AVAILABLE",
+  REQUESTED = "REQUESTED",
+  PENDING = "PENDING",
+  CONFIRMED = "CONFIRMED",
+  CANCELLED = "CANCELLED",
+  FAILED = "FAILED"
+}
+
+export enum OperatorNoteCategory {
+  GENERAL = "GENERAL",
+  SAFETY = "SAFETY",
+  FOLLOW_UP_NOTE = "FOLLOW_UP_NOTE",
+  HANDOFF_NOTE = "HANDOFF_NOTE",
+  TECHNICAL = "TECHNICAL"
+}
+
+export interface OperatorNotePayload {
+  note_id: string;
+  call_id: string;
+  operator_id: string;
+  category: OperatorNoteCategory;
+  text: string;
+  timestamp: string;
+  is_structured: boolean;
+}
+
+export interface OperatorActionPayload {
+  action_id: string;
+  call_id: string;
+  actor_id: string;
+  action_type: string;
+  previous_state?: string;
+  new_state?: string;
+  details?: Record<string, unknown>;
+  summary: string;
+  timestamp: string;
+}
+
+export interface OperatorStateChangedPayload {
+  call_id: string;
+  ownership_state: OperatorOwnershipState;
+  handoff_status: HandoffStatus;
+  adaptive_paused: boolean;
+  active_operator_id?: string | null;
+  updated_at: string;
 }

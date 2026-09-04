@@ -83,6 +83,13 @@ class TelephonySession:
         self.adaptive_history: List[Dict[str, Any]] = []
         self.latest_adaptive_strategy: Optional[Dict[str, Any]] = None
 
+        # Phase 8 Human Operator Workstation
+        self.operator_ownership_state: str = "AI_ASSISTED"
+        self.operator_handoff_status: str = "AVAILABLE"
+        self.adaptive_paused: bool = False
+        self.active_operator_id: Optional[str] = None
+        self.operator_notes_count: int = 0
+
         # Metrics and sequence validation
         self.last_sequence_number: int = 0
         self.inbound_frames_count: int = 0
@@ -126,6 +133,26 @@ class TelephonySession:
                     ad_payload = dumped.get("payload", {})
                     self.latest_adaptive_strategy = ad_payload
                     self.adaptive_history.append(ad_payload)
+                elif "OPERATOR_TAKEOVER" in ev_type_str:
+                    payload = dumped.get("payload", {})
+                    self.operator_ownership_state = "HUMAN_ACTIVE"
+                    self.active_operator_id = payload.get("operator_id", "operator")
+                elif "OPERATOR_PAUSE_ADAPTIVE" in ev_type_str:
+                    self.adaptive_paused = True
+                elif "OPERATOR_RESUME_AI" in ev_type_str:
+                    self.adaptive_paused = False
+                elif "OPERATOR_HANDOFF_REQUESTED" in ev_type_str:
+                    self.operator_ownership_state = "HANDOFF_PENDING"
+                    self.operator_handoff_status = "REQUESTED"
+                elif "OPERATOR_HANDOFF_CONFIRMED" in ev_type_str:
+                    self.operator_handoff_status = "CONFIRMED"
+                elif "OPERATOR_HANDOFF_CANCELLED" in ev_type_str:
+                    self.operator_handoff_status = "CANCELLED"
+                    self.operator_ownership_state = "HUMAN_ACTIVE"
+                elif "OPERATOR_CALL_ENDED" in ev_type_str:
+                    self.operator_ownership_state = "ENDED"
+                elif "OPERATOR_NOTE_ADDED" in ev_type_str:
+                    self.operator_notes_count += 1
         except Exception as e:
             logger.error(f"Error recording event in session {self.session_id}: {e}")
 
@@ -257,6 +284,11 @@ class TelephonySession:
             "latest_adaptive_strategy": self.latest_adaptive_strategy,
             "adaptive_action": self.latest_adaptive_strategy.get("action") if self.latest_adaptive_strategy else None,
             "adaptive_priority": self.latest_adaptive_strategy.get("priority") if self.latest_adaptive_strategy else None,
+            "ownership_state": self.operator_ownership_state,
+            "handoff_status": self.operator_handoff_status,
+            "adaptive_paused": self.adaptive_paused,
+            "active_operator_id": self.active_operator_id,
+            "notes_count": self.operator_notes_count,
             "utterances_count": len(utts),
             "events_count": len(self.event_history),
             "is_active": self.state_machine.is_active,

@@ -175,7 +175,17 @@ const SCENARIOS = [
   },
 ];
 
-type EventFilterCategory = "ALL" | "TRANSCRIPT" | "CONVERSATION" | "SAFETY" | "ERRORS" | "LATENCY";
+type EventFilterCategory =
+  | "ALL"
+  | "TRANSCRIPT"
+  | "CONVERSATION"
+  | "SAFETY"
+  | "ERRORS"
+  | "LATENCY"
+  | "OPERATOR"
+  | "SVI"
+  | "ACOUSTIC"
+  | "ADAPTIVE";
 
 export default function OperatorCallsPage() {
   // Call lists
@@ -279,6 +289,48 @@ export default function OperatorCallsPage() {
   const [adaptiveLabAcoustic, setAdaptiveLabAcoustic] = useState<string>("GOOD");
   const [adaptiveLabResult, setAdaptiveLabResult] = useState<any>(null);
   const [isEvaluatingAdaptive, setIsEvaluatingAdaptive] = useState<boolean>(false);
+
+  // Phase 8: Human Operator Workstation State
+  const [operatorOwnershipState, setOperatorOwnershipState] = useState<string>("AI_ASSISTED");
+  const [operatorHandoffStatus, setOperatorHandoffStatus] = useState<string>("AVAILABLE");
+  const [isAdaptivePaused, setIsAdaptivePaused] = useState<boolean>(false);
+  const [operatorNotes, setOperatorNotes] = useState<Array<{
+    note_id: string;
+    call_id: string;
+    operator_id: string;
+    category: string;
+    text: string;
+    timestamp: string;
+    is_structured: boolean;
+  }>>([]);
+  const [isNotesModalOpen, setIsNotesModalOpen] = useState<boolean>(false);
+  const [newNoteText, setNewNoteText] = useState<string>("");
+  const [newNoteCategory, setNewNoteCategory] = useState<string>("GENERAL");
+  const [isSubmittingNote, setIsSubmittingNote] = useState<boolean>(false);
+
+  // Operator Queue & Action State
+  const [queueFilter, setQueueFilter] = useState<string>("ALL");
+  const [confirmationAction, setConfirmationAction] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmLabel: string;
+    actionType: "END_CALL" | "CONFIRM_HANDOFF" | "TAKEOVER" | null;
+  }>({
+    isOpen: false,
+    title: "",
+    description: "",
+    confirmLabel: "",
+    actionType: null,
+  });
+
+  const [activeAlerts, setActiveAlerts] = useState<Array<{
+    id: string;
+    severity: "INFO" | "NOTICE" | "WARNING" | "CRITICAL";
+    title: string;
+    message: string;
+    timestamp: string;
+  }>>([]);
 
   // UI Modals & Filters
   const [eventFilter, setEventFilter] = useState<EventFilterCategory>("ALL");
@@ -577,6 +629,139 @@ export default function OperatorCallsPage() {
             ]);
           }
           break;
+
+        case EventType.OPERATOR_TAKEOVER:
+          setOperatorOwnershipState("HUMAN_ACTIVE");
+          setActiveAlerts((prev) => [
+            {
+              id: crypto.randomUUID(),
+              severity: "NOTICE",
+              title: "Operator Takeover",
+              message: `Operator ${payload.operator_id || "active"} assumed control of call.`,
+              timestamp: envelope.timestamp,
+            },
+            ...prev.slice(0, 4),
+          ]);
+          break;
+
+        case EventType.OPERATOR_PAUSE_ADAPTIVE:
+          setIsAdaptivePaused(true);
+          setActiveAlerts((prev) => [
+            {
+              id: crypto.randomUUID(),
+              severity: "INFO",
+              title: "Adaptive AI Paused",
+              message: "Conversational planner paused. Safety engine active.",
+              timestamp: envelope.timestamp,
+            },
+            ...prev.slice(0, 4),
+          ]);
+          break;
+
+        case EventType.OPERATOR_RESUME_AI:
+          setIsAdaptivePaused(false);
+          setActiveAlerts((prev) => [
+            {
+              id: crypto.randomUUID(),
+              severity: "INFO",
+              title: "Adaptive AI Resumed",
+              message: "Conversational planner active.",
+              timestamp: envelope.timestamp,
+            },
+            ...prev.slice(0, 4),
+          ]);
+          break;
+
+        case EventType.OPERATOR_REQUEST_SAFETY_CHECK:
+          setActiveAlerts((prev) => [
+            {
+              id: crypto.randomUUID(),
+              severity: "WARNING",
+              title: "Safety Check Requested",
+              message: "Operator requested immediate safety re-evaluation.",
+              timestamp: envelope.timestamp,
+            },
+            ...prev.slice(0, 4),
+          ]);
+          break;
+
+        case EventType.OPERATOR_HANDOFF_REQUESTED:
+          setOperatorHandoffStatus("REQUESTED");
+          setOperatorOwnershipState("HANDOFF_PENDING");
+          setActiveAlerts((prev) => [
+            {
+              id: crypto.randomUUID(),
+              severity: "WARNING",
+              title: "Handoff Requested",
+              message: `Transfer requested to ${payload.target_department || "receiving counselor"}.`,
+              timestamp: envelope.timestamp,
+            },
+            ...prev.slice(0, 4),
+          ]);
+          break;
+
+        case EventType.OPERATOR_HANDOFF_CONFIRMED:
+          setOperatorHandoffStatus("CONFIRMED");
+          setActiveAlerts((prev) => [
+            {
+              id: crypto.randomUUID(),
+              severity: "NOTICE",
+              title: "Handoff Confirmed",
+              message: `Call transferred to ${payload.target_agent || "assigned counselor"}.`,
+              timestamp: envelope.timestamp,
+            },
+            ...prev.slice(0, 4),
+          ]);
+          break;
+
+        case EventType.OPERATOR_HANDOFF_CANCELLED:
+          setOperatorHandoffStatus("CANCELLED");
+          setOperatorOwnershipState("HUMAN_ACTIVE");
+          setActiveAlerts((prev) => [
+            {
+              id: crypto.randomUUID(),
+              severity: "INFO",
+              title: "Handoff Cancelled",
+              message: "Transfer cancelled. Operator remains in active control.",
+              timestamp: envelope.timestamp,
+            },
+            ...prev.slice(0, 4),
+          ]);
+          break;
+
+        case EventType.OPERATOR_NOTE_ADDED:
+          if (payload && payload.note_id) {
+            setOperatorNotes((prev) => {
+              if (prev.some((n) => n.note_id === payload.note_id)) return prev;
+              return [
+                {
+                  note_id: String(payload.note_id),
+                  call_id: String(payload.call_id || selectedCallId),
+                  operator_id: String(payload.operator_id || "operator"),
+                  category: String(payload.category || "GENERAL"),
+                  text: String(payload.text || ""),
+                  timestamp: String(payload.timestamp || envelope.timestamp),
+                  is_structured: Boolean(payload.is_structured ?? true),
+                },
+                ...prev,
+              ];
+            });
+          }
+          break;
+
+        case EventType.OPERATOR_CALL_ENDED:
+          setOperatorOwnershipState("ENDED");
+          setActiveAlerts((prev) => [
+            {
+              id: crypto.randomUUID(),
+              severity: "NOTICE",
+              title: "Call Concluded",
+              message: `Call session ended by operator.`,
+              timestamp: envelope.timestamp,
+            },
+            ...prev.slice(0, 4),
+          ]);
+          break;
       }
     },
   });
@@ -781,6 +966,32 @@ export default function OperatorCallsPage() {
       } catch (e) {
         console.error("Error loading Adaptive snapshot:", e);
       }
+
+      // Phase 8 Operator State & Notes Snapshot
+      try {
+        const [opRes, notesRes] = await Promise.all([
+          fetch(`${apiUrl}/v1/operator/calls/${callId}`),
+          fetch(`${apiUrl}/v1/operator/calls/${callId}/notes`),
+        ]);
+        if (opRes.ok) {
+          const opData = await opRes.json();
+          setOperatorOwnershipState(opData.ownership_state || "AI_ASSISTED");
+          setOperatorHandoffStatus(opData.handoff_status || "AVAILABLE");
+          setIsAdaptivePaused(Boolean(opData.adaptive_paused));
+        } else {
+          setOperatorOwnershipState("AI_ASSISTED");
+          setOperatorHandoffStatus("AVAILABLE");
+          setIsAdaptivePaused(false);
+        }
+        if (notesRes.ok) {
+          const notesData = await notesRes.json();
+          setOperatorNotes(notesData.notes || []);
+        } else {
+          setOperatorNotes([]);
+        }
+      } catch (e) {
+        console.error("Error loading Operator snapshot:", e);
+      }
     } catch (err) {
       console.error("Error loading call snapshot:", err);
     }
@@ -816,6 +1027,221 @@ export default function OperatorCallsPage() {
     } catch (err) {
       console.error("Error applying operator override:", err);
     }
+  };
+
+  // Phase 8: Operator Command Handlers
+  const handleTakeover = async (reason: string = "Operator initiated human takeover") => {
+    if (!selectedCallId) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/takeover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason, operator_id: "operator_1" }),
+      });
+      if (res.ok) {
+        setOperatorOwnershipState("HUMAN_ACTIVE");
+        setActiveAlerts((prev) => [
+          {
+            id: crypto.randomUUID(),
+            severity: "NOTICE",
+            title: "Operator Takeover",
+            message: "Human takeover active. Autonomous AI speech suppressed.",
+            timestamp: new Date().toISOString(),
+          },
+          ...prev.slice(0, 4),
+        ]);
+      }
+    } catch (e) {
+      console.error("Takeover error:", e);
+    }
+  };
+
+  const handlePauseAdaptive = async () => {
+    if (!selectedCallId) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Operator paused adaptive AI", operator_id: "operator_1" }),
+      });
+      if (res.ok) {
+        setIsAdaptivePaused(true);
+      }
+    } catch (e) {
+      console.error("Pause adaptive error:", e);
+    }
+  };
+
+  const handleResumeAdaptive = async () => {
+    if (!selectedCallId) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Operator resumed adaptive AI", operator_id: "operator_1" }),
+      });
+      if (res.ok) {
+        setIsAdaptivePaused(false);
+      }
+    } catch (e) {
+      console.error("Resume adaptive error:", e);
+    }
+  };
+
+  const handleRequestSafetyCheck = async () => {
+    if (!selectedCallId) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/safety-check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Operator requested safety verification", operator_id: "operator_1" }),
+      });
+      if (res.ok) {
+        setActiveAlerts((prev) => [
+          {
+            id: crypto.randomUUID(),
+            severity: "WARNING",
+            title: "Safety Check Requested",
+            message: "Safety Engine verification triggered.",
+            timestamp: new Date().toISOString(),
+          },
+          ...prev.slice(0, 4),
+        ]);
+      }
+    } catch (e) {
+      console.error("Safety check request error:", e);
+    }
+  };
+
+  const handleRequestHandoff = async () => {
+    if (!selectedCallId) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/handoff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_department: "crisis_counseling_tier2",
+          notes: "Warm transfer requested by human supervisor",
+          operator_id: "operator_1",
+        }),
+      });
+      if (res.ok) {
+        setOperatorHandoffStatus("REQUESTED");
+        setOperatorOwnershipState("HANDOFF_PENDING");
+      }
+    } catch (e) {
+      console.error("Request handoff error:", e);
+    }
+  };
+
+  const handleConfirmHandoff = async () => {
+    if (!selectedCallId) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/handoff/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transfer_confirmed_by: "supervisor_01",
+          target_agent: "counselor_tier2",
+        }),
+      });
+      if (res.ok) {
+        setOperatorHandoffStatus("CONFIRMED");
+      }
+    } catch (e) {
+      console.error("Confirm handoff error:", e);
+    }
+  };
+
+  const handleCancelHandoff = async () => {
+    if (!selectedCallId) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/handoff/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: "Operator cancelled transfer",
+          operator_id: "operator_1",
+        }),
+      });
+      if (res.ok) {
+        setOperatorHandoffStatus("CANCELLED");
+        setOperatorOwnershipState("HUMAN_ACTIVE");
+      }
+    } catch (e) {
+      console.error("Cancel handoff error:", e);
+    }
+  };
+
+  const handleSaveNote = async () => {
+    if (!selectedCallId || !newNoteText.trim()) return;
+    setIsSubmittingNote(true);
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: newNoteCategory,
+          text: newNoteText.trim(),
+          operator_id: "operator_1",
+        }),
+      });
+      if (res.ok) {
+        const note = await res.json();
+        setOperatorNotes((prev) => [note, ...prev]);
+        setNewNoteText("");
+      }
+    } catch (e) {
+      console.error("Save note error:", e);
+    } finally {
+      setIsSubmittingNote(false);
+    }
+  };
+
+  const handleEndCall = async () => {
+    if (!selectedCallId) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/end`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: "Operator concluded call from workstation",
+          operator_id: "operator_1",
+        }),
+      });
+      if (res.ok) {
+        setOperatorOwnershipState("ENDED");
+        fetchCalls();
+      }
+    } catch (e) {
+      console.error("End call error:", e);
+    }
+  };
+
+  const openConfirmationModal = (
+    actionType: "END_CALL" | "CONFIRM_HANDOFF" | "TAKEOVER",
+    title: string,
+    description: string,
+    confirmLabel: string
+  ) => {
+    setConfirmationAction({
+      isOpen: true,
+      title,
+      description,
+      confirmLabel,
+      actionType,
+    });
+  };
+
+  const executeConfirmedAction = () => {
+    if (confirmationAction.actionType === "END_CALL") {
+      handleEndCall();
+    } else if (confirmationAction.actionType === "CONFIRM_HANDOFF") {
+      handleConfirmHandoff();
+    } else if (confirmationAction.actionType === "TAKEOVER") {
+      handleTakeover();
+    }
+    setConfirmationAction({ isOpen: false, title: "", description: "", confirmLabel: "", actionType: null });
   };
 
   // Acknowledge Safety Signal
@@ -965,9 +1391,36 @@ export default function OperatorCallsPage() {
       if (eventFilter === "LATENCY") {
         return type.includes("LATENCY");
       }
+      if (eventFilter === "OPERATOR") {
+        return type.includes("OPERATOR_") || type.includes("NOTE_");
+      }
+      if (eventFilter === "SVI") {
+        return type.includes("SVI");
+      }
+      if (eventFilter === "ACOUSTIC") {
+        return type.includes("ACOUSTIC");
+      }
+      if (eventFilter === "ADAPTIVE") {
+        return type.includes("ADAPTIVE");
+      }
       return true;
     });
   }, [callEvents, eventFilter]);
+
+  // Filtered Calls Queue
+  const filteredCalls = useMemo(() => {
+    let list = activeTab === "ACTIVE" ? activeCalls : recentCalls;
+    if (queueFilter === "CRITICAL") {
+      list = list.filter((c) => c.safety_state === "CRITICAL");
+    } else if (queueFilter === "ELEVATED") {
+      list = list.filter((c) => ["HIGH", "ELEVATED"].includes(c.safety_state || ""));
+    } else if (queueFilter === "TAKEOVER") {
+      list = list.filter((c) => (c as any).ownership_state === "HUMAN_ACTIVE");
+    } else if (queueFilter === "HIGH_SVI") {
+      list = list.filter((c) => ["CRITICAL", "HIGH"].includes((c as any).svi_band || ""));
+    }
+    return list;
+  }, [activeTab, activeCalls, recentCalls, queueFilter]);
 
   // Language display helper
   const getLanguageLabel = (langCode?: string) => {
@@ -979,7 +1432,7 @@ export default function OperatorCallsPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div data-testid="operator-workstation" className="flex flex-col h-[calc(100vh-4rem)] bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Top Header Bar */}
       <header className="min-h-14 border-b border-slate-800 px-4 md:px-6 flex items-center justify-between gap-3 bg-slate-900/60 backdrop-blur shrink-0 overflow-x-auto">
         <div className="flex items-center gap-3">
@@ -1149,13 +1602,36 @@ export default function OperatorCallsPage() {
             </button>
           </div>
 
+          {/* Operator Queue Filters */}
+          <div className="flex flex-wrap gap-1 px-2.5 py-1.5 border-b border-slate-800/80 bg-slate-950/40">
+            {[
+              { key: "ALL", label: "All" },
+              { key: "CRITICAL", label: "Critical" },
+              { key: "ELEVATED", label: "Elevated" },
+              { key: "TAKEOVER", label: "Takeover" },
+              { key: "HIGH_SVI", label: "High SVI" },
+            ].map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setQueueFilter(f.key)}
+                className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                  queueFilter === f.key
+                    ? "bg-slate-700 text-white font-semibold shadow-xs"
+                    : "bg-slate-900 text-slate-400 hover:bg-slate-800"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
           {/* Calls List */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {(activeTab === "ACTIVE" ? activeCalls : recentCalls).length === 0 ? (
+          <div data-testid="call-list" className="flex-1 overflow-y-auto p-3 space-y-2">
+            {filteredCalls.length === 0 ? (
               <div className="text-center py-12 px-4">
                 <PhoneCall className="h-8 w-8 text-slate-600 mx-auto mb-2 opacity-50" />
                 <p className="text-xs text-slate-500">
-                  {activeTab === "ACTIVE" ? "No active telephony calls." : "No recent calls recorded."}
+                  {activeTab === "ACTIVE" ? "No active telephony calls matching filter." : "No recent calls recorded."}
                 </p>
                 {activeTab === "ACTIVE" && (
                   <button
@@ -1167,8 +1643,12 @@ export default function OperatorCallsPage() {
                 )}
               </div>
             ) : (
-              (activeTab === "ACTIVE" ? activeCalls : recentCalls).map((call) => {
+              filteredCalls.map((call) => {
                 const isSelected = call.call_id === selectedCallId;
+                const ownership = (call as any).ownership_state || "AI_ASSISTED";
+                const isCritical = call.safety_state === "CRITICAL";
+                const isHighSvi = ["CRITICAL", "HIGH"].includes((call as any).svi_band || "");
+
                 return (
                   <div
                     key={call.call_id}
@@ -1184,15 +1664,26 @@ export default function OperatorCallsPage() {
                       <span className="font-mono text-xs font-semibold text-slate-200">
                         {call.caller_masked_number}
                       </span>
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                          call.is_active
-                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                            : "bg-slate-800 text-slate-400 border border-slate-700"
-                        }`}
-                      >
-                        {call.state}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                            ownership === "HUMAN_ACTIVE"
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                              : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                          }`}
+                        >
+                          {ownership === "HUMAN_ACTIVE" ? "Human" : "AI"}
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                            call.is_active
+                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                              : "bg-slate-800 text-slate-400 border border-slate-700"
+                          }`}
+                        >
+                          {call.state}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] text-slate-400">
@@ -1200,6 +1691,38 @@ export default function OperatorCallsPage() {
                         {call.call_id}
                       </span>
                       <span>{call.duration_seconds}s</span>
+                    </div>
+
+                    {/* Priority Indicator & Explanation */}
+                    <div className="mt-1 flex items-center justify-between text-[10px]">
+                      <span
+                        className={`font-semibold ${
+                          isCritical
+                            ? "text-red-400"
+                            : isHighSvi
+                            ? "text-amber-400"
+                            : "text-slate-500"
+                        }`}
+                        title={
+                          isCritical
+                            ? "Why: Immediate safety critical priority rule match"
+                            : isHighSvi
+                            ? "Why: Elevated distress vulnerability index"
+                            : "Why: Standard conversational intake"
+                        }
+                      >
+                        {isCritical
+                          ? "• P0: Safety Critical"
+                          : isHighSvi
+                          ? "• P2: High SVI Distress"
+                          : "• Standard Queue"}
+                      </span>
+                      {(call as any).notes_count > 0 && (
+                        <span className="text-slate-400 flex items-center gap-0.5">
+                          <FileText className="h-2.5 w-2.5" />
+                          {(call as any).notes_count}
+                        </span>
+                      )}
                     </div>
 
                     <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-800/60">
@@ -1241,7 +1764,7 @@ export default function OperatorCallsPage() {
           {selectedCall ? (
             <>
               {/* Selected Call Header */}
-              <div className="border-b border-slate-800 bg-slate-900/30 p-4 shrink-0">
+              <div data-testid="active-call-header" className="border-b border-slate-800 bg-slate-900/30 p-4 shrink-0">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 font-mono font-bold">
@@ -1254,6 +1777,43 @@ export default function OperatorCallsPage() {
                         </h2>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700">
                           {selectedCall.provider}
+                        </span>
+                        {/* Phase 8 Ownership Badge */}
+                        <span
+                          data-testid="ownership-badge"
+                          className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
+                            operatorOwnershipState === "HUMAN_ACTIVE"
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-xs"
+                              : operatorOwnershipState === "HANDOFF_PENDING"
+                              ? "bg-purple-500/20 text-purple-300 border-purple-500/50"
+                              : operatorOwnershipState === "ENDED"
+                              ? "bg-slate-800 text-slate-400 border-slate-700"
+                              : "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                          }`}
+                        >
+                          {operatorOwnershipState}
+                        </span>
+                        {isAdaptivePaused && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 font-bold uppercase tracking-wider">
+                            AI Paused
+                          </span>
+                        )}
+                        {operatorHandoffStatus === "REQUESTED" && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700 font-bold uppercase tracking-wider animate-pulse">
+                            Handoff Requested
+                          </span>
+                        )}
+                        {operatorHandoffStatus === "CONFIRMED" && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700 font-bold uppercase tracking-wider">
+                            Handoff Confirmed
+                          </span>
+                        )}
+                        {/* Mode Indicator */}
+                        <span
+                          data-testid="simulation-mode-badge"
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono border border-slate-700"
+                        >
+                          DEV / SIMULATION ACTION
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 font-mono">ID: {selectedCall.call_id}</p>
@@ -1325,6 +1885,266 @@ export default function OperatorCallsPage() {
                     <span className="font-mono text-indigo-300 font-semibold">{latencies.total_ms}ms</span>
                   </div>
                 </div>
+              </div>
+
+              {/* Phase 8 Realtime Notifications Toast / Banner */}
+              {activeAlerts.length > 0 && (
+                <div data-testid="operator-alert-banner" className="mx-6 mt-3 space-y-1.5">
+                  {activeAlerts.slice(0, 2).map((alert) => (
+                    <div
+                      key={alert.id}
+                      className={`px-3 py-2 rounded-lg border text-xs flex items-center justify-between transition-all ${
+                        alert.severity === "CRITICAL"
+                          ? "bg-red-950/80 border-red-600 text-red-100 shadow-md"
+                          : alert.severity === "WARNING"
+                          ? "bg-amber-950/70 border-amber-500 text-amber-100"
+                          : "bg-slate-900 border-slate-700 text-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <AlertCircle
+                          className={`h-4 w-4 ${
+                            alert.severity === "CRITICAL"
+                              ? "text-red-400"
+                              : alert.severity === "WARNING"
+                              ? "text-amber-400"
+                              : "text-cyan-400"
+                          }`}
+                        />
+                        <div>
+                          <span className="font-bold">{alert.title}: </span>
+                          <span>{alert.message}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setActiveAlerts((prev) => prev.filter((a) => a.id !== alert.id))}
+                        className="text-slate-400 hover:text-white p-1"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Phase 8 Operator Control Bar */}
+              <div
+                data-testid="operator-control-bar"
+                className="mx-6 mt-3 p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 flex flex-wrap items-center justify-between gap-2 shadow-xs"
+              >
+                <div className="flex items-center gap-2">
+                  {operatorOwnershipState !== "HUMAN_ACTIVE" ? (
+                    <button
+                      data-testid="takeover-button"
+                      onClick={() => handleTakeover("Operator initiated human takeover")}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs transition-all shadow-sm"
+                    >
+                      <User className="h-3.5 w-3.5" />
+                      <span>Take Over</span>
+                    </button>
+                  ) : (
+                    <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs">
+                      <User className="h-3.5 w-3.5" />
+                      <span>Human Active</span>
+                    </span>
+                  )}
+
+                  {!isAdaptivePaused ? (
+                    <button
+                      data-testid="pause-adaptive-button"
+                      onClick={handlePauseAdaptive}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+                    >
+                      <span>Pause Adaptive</span>
+                    </button>
+                  ) : (
+                    <button
+                      data-testid="resume-adaptive-button"
+                      onClick={handleResumeAdaptive}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold transition-all"
+                    >
+                      <span>Resume Adaptive</span>
+                    </button>
+                  )}
+
+                  <button
+                    data-testid="safety-check-button"
+                    onClick={handleRequestSafetyCheck}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 border border-rose-800 text-xs font-semibold transition-all"
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5 text-rose-400" />
+                    <span>Request Safety Check</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    data-testid="handoff-button"
+                    onClick={handleRequestHandoff}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600/30 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/40 text-xs font-semibold transition-all"
+                  >
+                    <span>Request Handoff</span>
+                  </button>
+
+                  {operatorHandoffStatus === "REQUESTED" && (
+                    <button
+                      data-testid="handoff-confirm-button"
+                      onClick={() =>
+                        openConfirmationModal(
+                          "CONFIRM_HANDOFF",
+                          "Confirm Handoff",
+                          "Are you sure you want to confirm transferring this call to a receiving tele-counselor?",
+                          "Confirm Transfer"
+                        )
+                      }
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm"
+                    >
+                      <span>Confirm Handoff</span>
+                    </button>
+                  )}
+
+                  {operatorHandoffStatus === "REQUESTED" && (
+                    <button
+                      data-testid="handoff-cancel-button"
+                      onClick={handleCancelHandoff}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-all"
+                    >
+                      <span>Cancel</span>
+                    </button>
+                  )}
+
+                  <button
+                    data-testid="add-note-button"
+                    onClick={() => setIsNotesModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-all"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-indigo-400" />
+                    <span>Notes ({operatorNotes.length})</span>
+                  </button>
+
+                  <button
+                    data-testid="end-call-button"
+                    onClick={() =>
+                      openConfirmationModal(
+                        "END_CALL",
+                        "End Active Call",
+                        "Are you sure you want to conclude and terminate this call session?",
+                        "End Call"
+                      )
+                    }
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-sm"
+                  >
+                    <span>End Call</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Phase 8 Unified Call Triage Summary */}
+              <div
+                data-testid="unified-triage-summary"
+                className="mx-6 mt-3 p-3.5 rounded-xl border border-slate-800 bg-slate-900/80 shadow-md"
+              >
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-indigo-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                      Unified Call Triage Summary
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">Realtime Multimodal Synthesis</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 text-xs">
+                  {/* 1. Safety State */}
+                  <div data-testid="safety-summary" className="p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Safety State
+                    </div>
+                    <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                      <span
+                        className={`h-2 w-2 rounded-full ${
+                          safetyState === "CRITICAL"
+                            ? "bg-red-500 animate-ping"
+                            : safetyState === "HIGH"
+                            ? "bg-amber-500"
+                            : safetyState === "ELEVATED"
+                            ? "bg-yellow-500"
+                            : "bg-emerald-500"
+                        }`}
+                      />
+                      <span className="font-mono">{safetyState}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1 truncate">
+                      {safetySignals.length > 0 ? `${safetySignals.length} active signal(s)` : "No active threats"}
+                    </p>
+                  </div>
+
+                  {/* 2. SVI Distress */}
+                  <div data-testid="svi-summary" className="p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      SVI Index (0-100)
+                    </div>
+                    <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                      <span className="font-mono text-cyan-400">{sviScore !== null ? sviScore : "—"}</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
+                        {sviBand}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Trend: {sviTrend}</p>
+                  </div>
+
+                  {/* 3. Acoustic Quality */}
+                  <div data-testid="acoustic-summary" className="p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Acoustic Signal
+                    </div>
+                    <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                      <span className="font-mono text-purple-400">{acousticQuality}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1 font-mono">
+                      Conf: {(acousticConfidence * 100).toFixed(0)}%
+                    </p>
+                  </div>
+
+                  {/* 4. Adaptive Strategy */}
+                  <div data-testid="adaptive-summary" className="p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Adaptive Policy
+                    </div>
+                    <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                      <span className="font-mono text-emerald-400">{adaptivePriority}</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 truncate">
+                        {adaptiveAction}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1 truncate">Target: {adaptiveTarget}</p>
+                  </div>
+
+                  {/* 5. Human Authority */}
+                  <div data-testid="human-summary" className="p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Human Authority
+                    </div>
+                    <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                          operatorOwnershipState === "HUMAN_ACTIVE"
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                            : operatorOwnershipState === "HANDOFF_PENDING"
+                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                            : operatorOwnershipState === "ENDED"
+                            ? "bg-slate-800 text-slate-400"
+                            : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                        }`}
+                      >
+                        {operatorOwnershipState}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Handoff: {operatorHandoffStatus}</p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 italic mt-2 text-center">
+                  Operational Triage Summary — Strictly advisory &amp; supervisory. Not a clinical diagnosis, medical evaluation, or autonomous emergency dispatch.
+                </p>
               </div>
 
               {/* Phase 4 Deterministic Safety Signals Oversight Banner */}
@@ -1437,16 +2257,18 @@ export default function OperatorCallsPage() {
                             <span className="text-[10px] text-slate-400 font-mono">
                               [{sig.rule_id} {sig.rule_version}]
                             </span>
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
-                              {sig.evidence.temporal_context}
-                            </span>
+                            {sig.evidence?.temporal_context && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
+                                {sig.evidence.temporal_context}
+                              </span>
+                            )}
                           </div>
 
                           <p className="text-xs text-slate-200">
-                            <strong className="text-white">Why:</strong> {sig.evidence.reason}
+                            <strong className="text-white">Why:</strong> {sig.evidence?.reason || "Safety signal triggered"}
                           </p>
 
-                          {sig.evidence.matched_phrase && (
+                          {sig.evidence?.matched_phrase && (
                             <p className="text-[11px] text-slate-400 font-mono">
                               Matched: &ldquo;<span className="text-amber-300 underline font-semibold">{sig.evidence.matched_phrase}</span>&rdquo;
                             </p>
@@ -2044,7 +2866,7 @@ export default function OperatorCallsPage() {
         </main>
 
         {/* Right Sidebar: Realtime Event Timeline & Filter */}
-        <aside className="w-96 bg-slate-900/50 flex flex-col shrink-0">
+        <aside data-testid="event-timeline" className="w-96 bg-slate-900/50 flex flex-col shrink-0">
           {/* Timeline Header & Filters */}
           <div className="border-b border-slate-800 p-3">
             <div className="flex items-center justify-between mb-2">
@@ -2062,7 +2884,7 @@ export default function OperatorCallsPage() {
 
             {/* Filter Pills */}
             <div className="flex flex-wrap gap-1">
-              {(["ALL", "TRANSCRIPT", "CONVERSATION", "ERRORS", "LATENCY"] as EventFilterCategory[]).map(
+              {(["ALL", "OPERATOR", "SAFETY", "SVI", "ACOUSTIC", "ADAPTIVE", "TRANSCRIPT", "CONVERSATION", "ERRORS", "LATENCY"] as EventFilterCategory[]).map(
                 (f) => (
                   <button
                     key={f}
@@ -2094,6 +2916,7 @@ export default function OperatorCallsPage() {
                 return (
                   <div
                     key={ev.event_id || `${type}-${idx}`}
+                    data-testid="timeline-event-item"
                     className={`p-2.5 rounded-md border text-xs transition-colors hover:bg-slate-800/80 ${
                       isError
                         ? "bg-rose-950/20 border-rose-800/50"
@@ -3446,6 +4269,177 @@ export default function OperatorCallsPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Phase 8 Operator Notes Modal */}
+      {isNotesModalOpen && (
+        <div
+          data-testid="operator-notes-panel"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    Structured Operator Notes
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-indigo-300 font-mono border border-slate-700">
+                      Append-Only Audit
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Call: {selectedCall?.caller_masked_number || selectedCallId}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsNotesModalOpen(false)}
+                className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 space-y-4">
+              {/* Note Input Form */}
+              <div className="space-y-2.5 p-3 rounded-lg bg-slate-950/60 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">Category:</label>
+                  <select
+                    data-testid="note-category-select"
+                    value={newNoteCategory}
+                    onChange={(e) => setNewNoteCategory(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="GENERAL">General</option>
+                    <option value="SAFETY">Safety</option>
+                    <option value="FOLLOW_UP_NOTE">Follow Up Note</option>
+                    <option value="HANDOFF_NOTE">Handoff Note</option>
+                    <option value="TECHNICAL">Technical</option>
+                  </select>
+                </div>
+
+                <textarea
+                  data-testid="note-text-input"
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  placeholder="Enter structured operator observation or supervisor instruction..."
+                  rows={3}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-sans resize-none"
+                />
+
+                <div className="flex justify-end">
+                  <button
+                    data-testid="submit-note-button"
+                    disabled={isSubmittingNote || !newNoteText.trim()}
+                    onClick={handleSaveNote}
+                    className="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold disabled:opacity-40 transition-colors flex items-center gap-1.5 shadow-sm"
+                  >
+                    {isSubmittingNote ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="h-3 w-3" />
+                        <span>Save Note</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Existing Notes List */}
+              <div className="space-y-2">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Recorded Notes ({operatorNotes.length})
+                </div>
+                {operatorNotes.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic py-4 text-center">
+                    No operator notes recorded for this call yet.
+                  </p>
+                ) : (
+                  <div data-testid="notes-list" className="space-y-2">
+                    {operatorNotes.map((note) => (
+                      <div
+                        key={note.note_id}
+                        className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-950 text-indigo-300 border border-indigo-800/60">
+                              {note.category}
+                            </span>
+                            <span className="font-mono text-slate-400">{note.operator_id}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {new Date(note.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">
+                          {note.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 8 Action Confirmation Modal */}
+      {confirmationAction.isOpen && (
+        <div
+          data-testid="confirmation-modal"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center gap-3 bg-slate-950/60">
+              <div className="h-8 w-8 rounded-lg bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">{confirmationAction.title}</h3>
+                <p className="text-xs text-slate-400">Supervisor Confirmation Required</p>
+              </div>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {confirmationAction.description}
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  data-testid="cancel-action-button"
+                  onClick={() =>
+                    setConfirmationAction({
+                      isOpen: false,
+                      title: "",
+                      description: "",
+                      confirmLabel: "",
+                      actionType: null,
+                    })
+                  }
+                  className="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  data-testid="confirm-action-button"
+                  onClick={executeConfirmedAction}
+                  className="px-4 py-1.5 rounded-md bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors shadow-sm"
+                >
+                  {confirmationAction.confirmLabel || "Confirm"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

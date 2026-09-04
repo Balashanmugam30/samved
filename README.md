@@ -201,12 +201,14 @@ pnpm dev:web
 
 | Task | Command | Description |
 | :--- | :--- | :--- |
-| **Backend Tests** | `uv run pytest apps/api/tests -v` | Runs 30 unit, state machine, webhook, concurrency, and contract tests |
+| **Backend Tests** | `uv run pytest apps/api/tests -v` | Runs 52 unit, state machine, webhook, concurrency, operator WS, and contract tests |
 | **Contract Flow Test** | `uv run pytest apps/api/tests/test_contract_flow.py -v` | Validates end-to-end event schema transport |
+| **Operator WS Test** | `uv run pytest apps/api/tests/test_operator_ws.py -v` | Validates operator snapshot, subscription, and cross-call isolation |
+| **Calls API Test** | `uv run pytest apps/api/tests/test_calls_api.py -v` | Validates REST snapshots for calls, transcripts, and events |
 | **Concurrency Test** | `uv run pytest apps/api/tests/test_telephony_concurrency.py -v` | Validates 5 concurrent calls with zero crosstalk |
 | **Frontend Type Check** | `pnpm type-check` | Type-checks all TypeScript packages & web app |
 | **Frontend Build** | `pnpm build` | Compiles production Next.js web application |
-| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs headless browser smoke tests (Desktop + Mobile) |
+| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 12 browser E2E tests (Desktop + Mobile Chrome) |
 | **Telephony Diagnostics** | `curl http://localhost:8000/v1/telephony/doctor` | Safe credential and public ingress check without secrets |
 | **Docker Compose** | `docker compose up -d` | Starts PostgreSQL, Redis, API, and Web containers |
 
@@ -216,11 +218,11 @@ pnpm dev:web
 1. **Deterministic Safeguards**: Critical safety triggers (self-harm, ongoing violence) are governed by auditable rules. LLMs do not have unilateral escalation authority.
 2. **Human Oversight**: Tele-counselors maintain real-time supervision and can override any AI recommendation.
 3. **Data Limitations**: Benchmark and public datasets used during development are for technical evaluation only; they do not represent clinical ground truth.
-4. **Confidentiality**: Caller phone numbers are masked, raw audio is ephemeral in dev modes, and secrets are strictly excluded from source control.
+4. **Confidentiality**: Caller phone numbers are masked (`+91******3210`), raw audio is ephemeral, and secrets are strictly excluded from source control.
 
 ---
 
-## 12. Implementation Status (Phase 2)
+## 12. Implementation Status (Phase 3 Complete)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -245,7 +247,11 @@ pnpm dev:web
 | **Turn Coordination & Orchestration State Machine** | ✅ | Phase 2 |
 | **Barge-In / Caller Interruption Engine** | ✅ | Phase 2 |
 | **Multilingual Voice Simulation Harness (Tamil/Hindi/English)** | ✅ | Phase 2 |
-| **Live Multi-Turn Transcript & Latency Console** | ✅ | Phase 2 |
+| **Dedicated Operator WebSocket (`/ws/operator`)** | ✅ | Phase 3 |
+| **Operator Dynamic Subscription & Isolation (`SUBSCRIBE_CALL`)** | ✅ | Phase 3 |
+| **REST Snapshot APIs (`/v1/calls`, `/transcript`, `/events`)** | ✅ | Phase 3 |
+| **Master-Detail Operator Console (`/calls`, Filters, Inspector)** | ✅ | Phase 3 |
+| **Localhost Runbook & Manual Verification Report** | ✅ | Phase 3 |
 | **Live External Telephony / Cloud Provider Access** | ⚠️ Blocked by External Credentials | Phase 1 & 2 |
 | **Deterministic Safety Engine** | ⏳ | Phase 4 |
 | **Stress Vulnerability Index (SVI 0–100 Bands)** | ⏳ | Phase 5 |

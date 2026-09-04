@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 from collections import deque
 from datetime import datetime, timezone
@@ -52,15 +52,19 @@ class TelephonySession:
         self.audio_format = AudioFormat()
 
         self.websocket: Optional[WebSocket] = None
+        self.created_at: str = datetime.now(timezone.utc).isoformat()
         self.connected_at: Optional[str] = None
+        self.ended_at: Optional[str] = None
         self.last_activity_at: str = datetime.now(timezone.utc).isoformat()
 
         # Bounded frame buffers (Separate per session)
         self.inbound_buffer: Deque[AudioFrame] = deque(maxlen=max_buffer_frames)
         self.outbound_queue: asyncio.Queue[bytes] = asyncio.Queue()
 
-        # Phase 2 Conversational AI Orchestrator
+        # Phase 2 & 3 Conversational AI & Event History
         self.orchestrator: Optional[ConversationOrchestrator] = None
+        self.event_history: Deque[Dict[str, Any]] = deque(maxlen=100)
+        self.saved_utterances: List[Dict[str, Any]] = []
 
         # Metrics and sequence validation
         self.last_sequence_number: int = 0
@@ -74,6 +78,76 @@ class TelephonySession:
 
     def touch(self) -> None:
         self.last_activity_at = datetime.now(timezone.utc).isoformat()
+
+    def record_event(self, envelope: Any) -> None:
+        """Stores a serialized event in the bounded session event history."""
+        try:
+            if hasattr(envelope, "model_dump"):
+                self.event_history.append(envelope.model_dump())
+            elif isinstance(envelope, dict):
+                self.event_history.append(envelope)
+        except Exception as e:
+            logger.error(f"Error recording event in session {self.session_id}: {e}")
+
+    def calculate_duration(self) -> float:
+        """Calculates call duration in seconds based on connected_at and ended_at/now."""
+        start_str = self.connected_at or self.created_at
+        if not start_str:
+            return 0.0
+        try:
+            start_dt = datetime.fromisoformat(start_str)
+            if self.ended_at:
+                end_dt = datetime.fromisoformat(self.ended_at)
+            else:
+                end_dt = datetime.now(timezone.utc)
+            return max(0.0, round((end_dt - start_dt).total_seconds(), 2))
+        except Exception:
+            return 0.0
+
+    def get_utterances(self) -> List[Dict[str, Any]]:
+        """Returns ordered list of conversation utterances."""
+        if self.orchestrator and self.orchestrator.utterances:
+            return [
+                {
+                    "utterance_id": u.utterance_id,
+                    "speaker": u.speaker.value if hasattr(u.speaker, "value") else str(u.speaker),
+                    "text": u.text,
+                    "language": u.language.value if hasattr(u.language, "value") else str(u.language),
+                    "confidence": u.confidence,
+                    "is_final": u.is_final,
+                    "intent": getattr(u, "intent", None),
+                    "safety_flag": getattr(u, "safety_flag", False),
+                    "created_at": getattr(u, "created_at", datetime.now(timezone.utc).isoformat()),
+                    "timestamp": getattr(u, "created_at", datetime.now(timezone.utc).isoformat()),
+                }
+                for u in self.orchestrator.utterances
+            ]
+        return list(self.saved_utterances)
+
+    def get_summary_dict(self) -> Dict[str, Any]:
+        """Returns dictionary summary for REST API and operator console."""
+        conv_state = self.orchestrator.state.value if self.orchestrator else "ENDED"
+        current_lang = self.orchestrator.current_language.value if self.orchestrator else "unknown"
+        utts = self.get_utterances()
+
+        return {
+            "session_id": self.session_id,
+            "call_id": self.call_id,
+            "provider_call_id": self.provider_call_id,
+            "provider": self.provider,
+            "caller_masked_number": self.masked_caller_number,
+            "state": self.state_machine.current_state.value,
+            "created_at": self.created_at,
+            "connected_at": self.connected_at,
+            "ended_at": self.ended_at,
+            "last_activity_at": self.last_activity_at,
+            "duration_seconds": self.calculate_duration(),
+            "conversation_state": conv_state,
+            "current_language": current_lang,
+            "utterances_count": len(utts),
+            "events_count": len(self.event_history),
+            "is_active": self.state_machine.is_active,
+        }
 
     def ingest_inbound_frame(self, frame: AudioFrame) -> None:
         self.touch()
@@ -183,6 +257,9 @@ def create_session_orchestrator(session: TelephonySession) -> ConversationOrches
                 call_id=session.call_id,
                 payload=payload,
             )
+            # Record in session bounded event history
+            session.record_event(envelope)
+
             # Fire-and-forget broadcast to all active operator dashboard WebSockets
             asyncio.create_task(manager.broadcast_global(envelope))
         except Exception as e:
@@ -200,12 +277,14 @@ def create_session_orchestrator(session: TelephonySession) -> ConversationOrches
 
 
 class RealtimeSessionManager:
-    """Concurrency-safe global manager for active telephony calls and sessions."""
+    """Concurrency-safe global manager for active and recent telephony calls."""
 
-    def __init__(self):
+    def __init__(self, max_recent_history: int = 50):
         self._sessions: Dict[str, TelephonySession] = {}
         self._provider_call_id_map: Dict[str, str] = {}  # provider_call_id -> session_id
         self._call_id_map: Dict[str, str] = {}           # call_id -> session_id
+        self._recent_sessions: Deque[Dict[str, Any]] = deque(maxlen=max_recent_history)
+        self._recent_calls_map: Dict[str, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
 
     async def create_session(
@@ -274,7 +353,11 @@ class RealtimeSessionManager:
             if not session:
                 return None
 
-            # Stop conversation orchestrator cleanly
+            # 1. Snapshot utterances and mark ended timestamp
+            session.saved_utterances = session.get_utterances()
+            session.ended_at = datetime.now(timezone.utc).isoformat()
+
+            # 2. Stop conversation orchestrator cleanly
             if session.orchestrator:
                 try:
                     await session.orchestrator.stop()
@@ -287,7 +370,17 @@ class RealtimeSessionManager:
             elif session.state_machine.can_transition_to(CallState.FAILED):
                 session.state_machine.transition_to(CallState.FAILED, reason=reason)
 
-            # Close WebSocket if still open
+            # 3. Store in bounded recent completed calls history
+            summary = session.get_summary_dict()
+            summary["events"] = list(session.event_history)
+            summary["utterances"] = list(session.saved_utterances)
+            self._recent_sessions.appendleft(summary)
+            self._recent_calls_map[session.call_id] = summary
+            if len(self._recent_calls_map) > 100:
+                oldest_key = next(iter(self._recent_calls_map))
+                del self._recent_calls_map[oldest_key]
+
+            # 4. Close WebSocket if still open
             if session.websocket:
                 try:
                     await session.websocket.close()
@@ -295,19 +388,55 @@ class RealtimeSessionManager:
                     pass
                 session.websocket = None
 
-            # Clear buffers
+            # 5. Clear audio buffers
             session.inbound_buffer.clear()
 
-            # Remove from lookup maps to prevent memory leakage
+            # 6. Remove from active lookup maps to prevent memory leakage
             self._provider_call_id_map.pop(session.provider_call_id, None)
             self._call_id_map.pop(session.call_id, None)
             self._sessions.pop(session_id, None)
 
-            logger.info(f"Terminated and cleaned up telephony session {session_id} ({reason})")
+            logger.info(f"Terminated and archived telephony session {session_id} ({reason})")
             return session
 
     def list_active_sessions(self) -> List[TelephonySessionInfo]:
         return [sess.to_info() for sess in self._sessions.values() if sess.state_machine.is_active]
+
+    def list_calls(self) -> Dict[str, Any]:
+        """Returns structured lists of active and recently completed calls."""
+        active = [sess.get_summary_dict() for sess in self._sessions.values() if sess.state_machine.is_active]
+        recent = list(self._recent_sessions)
+        return {
+            "active_calls": active,
+            "recent_calls": recent,
+            "total_active": len(active),
+            "total_recent": len(recent),
+        }
+
+    async def get_call_summary(self, call_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves call summary from active sessions or recent history."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            return sess.get_summary_dict()
+        return self._recent_calls_map.get(call_id)
+
+    async def get_call_transcript(self, call_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Retrieves ordered transcript turns for an active or completed call."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            return sess.get_utterances()
+        if call_id in self._recent_calls_map:
+            return self._recent_calls_map[call_id].get("utterances", [])
+        return None
+
+    async def get_call_events(self, call_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Retrieves recent domain events for an active or completed call."""
+        sess = await self.get_by_call_id(call_id)
+        if sess:
+            return list(sess.event_history)
+        if call_id in self._recent_calls_map:
+            return self._recent_calls_map[call_id].get("events", [])
+        return None
 
     @property
     def active_calls_count(self) -> int:

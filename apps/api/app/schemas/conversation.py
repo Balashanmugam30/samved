@@ -29,6 +29,8 @@ class Utterance(BaseModel):
     language: str
     confidence: float = 1.0
     is_final: bool = True
+    intent: Optional[str] = None
+    safety_flag: bool = False
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 

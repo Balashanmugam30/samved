@@ -60,9 +60,17 @@ All real-time communications over the SAMVED WebSocket Gateway (`/ws`) and inter
 | **Safety & Vulnerability** | `SAFETY_SIGNAL` | Deterministic safety rule triggered (physical danger, self-harm). |
 | | `RISK_UPDATED` | Immediate threat or vulnerability indicator calculated. |
 | | `SVI_UPDATED` | Stress Vulnerability Index updated (Score 0–100 and Low/Mod/High/Crit band). |
-| **Agent & AI Action** | `AGENT_ACTION` | Specialized agent action executed (e.g. legal lookup, case draft). |
-| | `AI_RESPONSE_STARTED` | Generation / synthesis of spoken response initiated. |
-| | `AI_RESPONSE_ENDED` | Audio transmission of response completed to telephony leg. |
+| **Agent & Conversational Loop** | `AGENT_ACTION` | Specialized agent action executed (e.g. legal lookup, case draft). |
+| | `AI_THINKING` | LLM reasoning in progress for current conversational turn. |
+| | `AI_RESPONSE_STARTED` | LLM synthesized structured response text. |
+| | `AI_RESPONSE_ENDED` | Spoken response playback completed. |
+| | `TTS_STARTED` | Sarvam Bulbul voice synthesis initiated. |
+| | `TTS_ENDED` | Audio streaming to telephony buffer completed. |
+| | `SPEECH_INTERRUPTED` | Barge-in detected; AI cancelled synthesis and flushed outbound queue. |
+| | `CONVERSATION_STATE_CHANGED` | Dialogue state machine transition (`LISTENING`, `THINKING`, etc.). |
+| | `TURN_LATENCY` | Granular turn latency breakdown (`stt_ms`, `llm_ms`, `tts_ms`, `total_turn_ms`). |
+| | `OPERATOR_SNAPSHOT` | Initial state and subscription acknowledgment sent to operator console. |
+| | `STT_ERROR`, `LLM_ERROR`, `TTS_ERROR` | Provider or transport error with recovery diagnostics. |
 | **Escalation & Oversight** | `HUMAN_ALERT` | Priority alert dispatched to operator console. |
 | | `ESCALATION_RECOMMENDED` | Automated recommendation for tele-counselor or supervisor takeover. |
 | | `ESCALATION_ACCEPTED` | Human operator accepted escalation and took control. |
@@ -77,3 +85,16 @@ To prevent silent TCP connection drops through stateful firewalls:
 - Clients or servers emit `HEARTBEAT_PING`.
 - Receiver immediately replies with `HEARTBEAT_PONG` containing `{"reply_to": "<event_id>"}`.
 - Failure to receive pong within 60s triggers clean reconnection with exponential backoff.
+
+---
+
+## 4. Dedicated Operator WebSocket Protocol (`/ws/operator`)
+The dedicated operator endpoint streams all domain, conversation, and latency events without raw binary audio frames:
+
+1. **Initial Snapshot**: Emitted immediately upon connection with `event_type: "OPERATOR_SNAPSHOT"`. Contains `active_calls`, `recent_calls`, `system_mode`, and counts.
+2. **Inbound Actions**:
+   - `{"action": "SUBSCRIBE_CALL", "call_id": "<id>"}`: Subscribes operator to a single call's events.
+   - `{"action": "SUBSCRIBE_ALL"}`: Receives events across all calls.
+   - `{"action": "PING"}`: Responds with `HEARTBEAT_PONG`.
+3. **Cross-Call Isolation**: Event broadcasting strictly filters payloads matching the client's subscribed `call_id` to guarantee zero operator crosstalk.
+

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   PhoneCall,
   Activity,
@@ -17,32 +17,42 @@ import {
   AlertTriangle,
   Clock,
   Globe,
-  CornerDownRight,
   MessageSquare,
+  Filter,
+  Eye,
+  X,
+  Copy,
+  Check,
+  Wifi,
+  WifiOff,
+  User,
+  Bot,
+  Layers,
 } from "lucide-react";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { useOperatorWebSocket } from "@/hooks/useOperatorWebSocket";
 import { EventEnvelope, EventType } from "@samved/schemas";
 
-interface TelephonySessionItem {
+interface CallSummaryItem {
   session_id: string;
   call_id: string;
   provider_call_id: string;
   provider: string;
   caller_masked_number: string;
   state: string;
-  conversation_state?: string;
-  current_language?: string;
-  utterances_count?: number;
+  created_at: string;
   connected_at?: string | null;
+  ended_at?: string | null;
   last_activity_at: string;
-  inbound_frames_count: number;
-  inbound_bytes_count: number;
-  sequence_gaps_count: number;
+  duration_seconds: number;
+  conversation_state: string;
+  current_language: string;
+  utterances_count: number;
+  events_count: number;
   is_active: boolean;
 }
 
 interface TranscriptItem {
-  id: string;
+  utterance_id: string;
   speaker: "caller" | "agent" | "system";
   text: string;
   language?: string;
@@ -93,19 +103,21 @@ const SCENARIOS = [
   },
 ];
 
-export default function CallsPage() {
-  const [sessions, setSessions] = useState<TelephonySessionItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [simulating, setSimulating] = useState(false);
-  const [selectedScenario, setSelectedScenario] = useState("tamil_help");
-  const [callerPhone, setCallerPhone] = useState("+919876543210");
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+type EventFilterCategory = "ALL" | "TRANSCRIPT" | "CONVERSATION" | "ERRORS" | "LATENCY";
 
-  // Conversational state
-  const [aiState, setAiState] = useState<string>("IDLE");
-  const [currentLanguage, setCurrentLanguage] = useState<string>("ta-IN");
+export default function OperatorCallsPage() {
+  // Call lists
+  const [activeCalls, setActiveCalls] = useState<CallSummaryItem[]>([]);
+  const [recentCalls, setRecentCalls] = useState<CallSummaryItem[]>([]);
+  const [activeTab, setActiveTab] = useState<"ACTIVE" | "RECENT">("ACTIVE");
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+
+  // Selected Call Data
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
   const [partialDraft, setPartialDraft] = useState<string | null>(null);
+  const [callEvents, setCallEvents] = useState<EventEnvelope[]>([]);
+  const [aiState, setAiState] = useState<string>("IDLE");
+  const [currentLanguage, setCurrentLanguage] = useState<string>("ta-IN");
   const [latencies, setLatencies] = useState<LatencyMetrics>({
     stt_ms: 0,
     llm_ms: 0,
@@ -113,14 +125,66 @@ export default function CallsPage() {
     total_ms: 0,
   });
 
-  const transcriptScrollRef = useRef<HTMLDivElement>(null);
+  // UI Modals & Filters
+  const [eventFilter, setEventFilter] = useState<EventFilterCategory>("ALL");
+  const [inspectedEvent, setInspectedEvent] = useState<EventEnvelope | null>(null);
+  const [copiedJson, setCopiedJson] = useState(false);
+  const [isSimModalOpen, setIsSimModalOpen] = useState(false);
+  const [simScenario, setSimScenario] = useState("tamil_help");
+  const [simCallerPhone, setSimCallerPhone] = useState("+919876543210");
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [systemMode, setSystemMode] = useState<string>("DEV");
+
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-  // WebSocket for real-time events broadcasted by backend orchestrator
-  useWebSocket({
+  // Operator WebSocket Hook
+  const {
+    status: wsStatus,
+    reconnectCount,
+    subscribeCall,
+    subscribeAll,
+    connect,
+  } = useOperatorWebSocket({
+    initialCallId: selectedCallId,
+    onSnapshot: (snapshotPayload) => {
+      if (snapshotPayload.active_calls) {
+        setActiveCalls(snapshotPayload.active_calls);
+      }
+      if (snapshotPayload.recent_calls) {
+        setRecentCalls(snapshotPayload.recent_calls);
+      }
+      if (snapshotPayload.system_mode) {
+        setSystemMode(snapshotPayload.system_mode);
+      }
+      // If we subscribed to a specific call snapshot ack
+      if (snapshotPayload.transcript && snapshotPayload.subscribed_call_id === selectedCallId) {
+        const remoteTurns: TranscriptItem[] = snapshotPayload.transcript.map((t: any) => ({
+          utterance_id: t.utterance_id || crypto.randomUUID(),
+          speaker: t.speaker || "caller",
+          text: t.text || "",
+          language: t.language || "ta-IN",
+          confidence: t.confidence || 0.95,
+          is_final: t.is_final ?? true,
+          intent: t.intent,
+          safety_flag: t.safety_flag,
+          timestamp: t.timestamp || new Date().toISOString(),
+        }));
+        setTranscripts(remoteTurns);
+      }
+    },
     onEvent: (envelope: EventEnvelope) => {
       const event_type = envelope.event_type;
       const payload = (envelope.payload || {}) as Record<string, any>;
+      const eventCallId = envelope.call_id;
+
+      // Filter events if targeted to another call (cross-call isolation)
+      if (selectedCallId && eventCallId && eventCallId !== "global" && eventCallId !== selectedCallId) {
+        return;
+      }
+
+      // Append to event timeline
+      setCallEvents((prev) => [envelope, ...prev.slice(0, 99)]);
 
       switch (event_type) {
         case EventType.CONVERSATION_STATE_CHANGED:
@@ -130,8 +194,9 @@ export default function CallsPage() {
           break;
 
         case EventType.LANGUAGE_CHANGED:
-          if (payload.new_language) {
-            setCurrentLanguage(String(payload.new_language));
+        case EventType.LANGUAGE_DETECTED:
+          if (payload.new_language || payload.language) {
+            setCurrentLanguage(String(payload.new_language || payload.language));
           }
           break;
 
@@ -145,18 +210,24 @@ export default function CallsPage() {
         case EventType.TRANSCRIPT_FINAL:
           setPartialDraft(null);
           if (payload.text) {
-            setTranscripts((prev) => [
-              ...prev,
-              {
-                id: `caller-${Date.now()}-${Math.random()}`,
-                speaker: "caller",
-                text: String(payload.text),
-                language: payload.language ? String(payload.language) : currentLanguage,
-                confidence: typeof payload.confidence === "number" ? payload.confidence : 0.95,
-                is_final: true,
-                timestamp: new Date().toLocaleTimeString(),
-              },
-            ]);
+            const newUttId = String(payload.utterance_id || crypto.randomUUID());
+            setTranscripts((prev) => {
+              if (prev.some((u) => u.utterance_id === newUttId)) return prev;
+              return [
+                ...prev,
+                {
+                  utterance_id: newUttId,
+                  speaker: (payload.speaker as "caller" | "agent" | "system") || "caller",
+                  text: String(payload.text),
+                  language: String(payload.language || currentLanguage),
+                  confidence: typeof payload.confidence === "number" ? payload.confidence : 0.96,
+                  is_final: true,
+                  intent: payload.intent ? String(payload.intent) : undefined,
+                  safety_flag: Boolean(payload.safety_flag),
+                  timestamp: envelope.timestamp,
+                },
+              ];
+            });
           }
           break;
 
@@ -166,482 +237,784 @@ export default function CallsPage() {
 
         case EventType.AI_RESPONSE_STARTED:
           setAiState("SPEAKING");
-          if (payload.text) {
-            setTranscripts((prev) => [
-              ...prev,
-              {
-                id: `agent-${Date.now()}-${Math.random()}`,
-                speaker: "agent",
-                text: String(payload.text),
-                language: payload.language ? String(payload.language) : currentLanguage,
-                intent: payload.intent ? String(payload.intent) : undefined,
-                safety_flag: Boolean(payload.safety_flag),
-                is_final: true,
-                timestamp: new Date().toLocaleTimeString(),
-              },
-            ]);
+          if (payload.response_text) {
+            const uttId = String(payload.turn_id || crypto.randomUUID());
+            setTranscripts((prev) => {
+              if (prev.some((u) => u.utterance_id === uttId)) return prev;
+              return [
+                ...prev,
+                {
+                  utterance_id: uttId,
+                  speaker: "agent",
+                  text: String(payload.response_text),
+                  language: String(payload.language || currentLanguage),
+                  confidence: 1.0,
+                  is_final: true,
+                  intent: payload.detected_intent ? String(payload.detected_intent) : undefined,
+                  safety_flag: Boolean(payload.safety_flag),
+                  timestamp: envelope.timestamp,
+                },
+              ];
+            });
           }
           break;
 
         case EventType.SPEECH_INTERRUPTED:
           setAiState("INTERRUPTED");
-          setTranscripts((prev) => [
-            ...prev,
-            {
-              id: `system-interrupt-${Date.now()}`,
-              speaker: "system",
-              text: `[Barge-in] Caller interrupted agent speech: ${payload.reason || "voice_activity"}. Output audio queue flushed.`,
-              timestamp: new Date().toLocaleTimeString(),
-            },
-          ]);
+          break;
+
+        case EventType.CALL_ENDED:
+          setAiState("ENDED");
+          fetchCalls(); // Refresh call lists
           break;
 
         case EventType.TURN_LATENCY:
           setLatencies({
-            stt_ms: Number(payload.stt_latency_ms) || 0,
-            llm_ms: Number(payload.llm_latency_ms) || 0,
-            tts_ms: Number(payload.tts_latency_ms) || 0,
-            total_ms: Number(payload.total_turn_ms) || 0,
+            stt_ms: Number(payload.stt_ms || 0),
+            llm_ms: Number(payload.llm_ms || 0),
+            tts_ms: Number(payload.tts_ms || 0),
+            total_ms: Number(payload.total_turn_ms || 0),
           });
-          break;
-
-        case EventType.AI_RESPONSE_ENDED:
-          setAiState("LISTENING");
-          break;
-
-        default:
           break;
       }
     },
   });
 
-  // Auto-scroll transcript container
-  useEffect(() => {
-    if (transcriptScrollRef.current) {
-      transcriptScrollRef.current.scrollTop = transcriptScrollRef.current.scrollHeight;
-    }
-  }, [transcripts, partialDraft]);
-
-  const fetchSessions = async () => {
+  // REST Snapshot Fetcher
+  const fetchCalls = async () => {
     try {
-      setLoading(true);
-      const res = await fetch(`${apiUrl}/v1/telephony/sessions`, { cache: "no-store" });
+      const res = await fetch(`${apiUrl}/v1/calls`);
       if (res.ok) {
         const data = await res.json();
-        setSessions(data);
+        setActiveCalls(data.active_calls || []);
+        setRecentCalls(data.recent_calls || []);
+        // Auto-select first active call if none selected
+        if (!selectedCallId && data.active_calls?.length > 0) {
+          selectCall(data.active_calls[0].call_id);
+        }
       }
     } catch (e) {
-      console.error("Failed to fetch active telephony sessions", e);
-    } finally {
-      setLoading(false);
+      console.error("Failed to fetch calls:", e);
     }
   };
 
-  const startConversationSimulation = async () => {
+  useEffect(() => {
+    fetchCalls();
+    const interval = setInterval(fetchCalls, 8000);
+    return () => clearInterval(interval);
+  }, [apiUrl]);
+
+  // Handle Call Selection
+  const selectCall = async (callId: string) => {
+    setSelectedCallId(callId);
+    setPartialDraft(null);
+    subscribeCall(callId);
+
+    // Fetch call details and transcripts via REST snapshot
     try {
-      setSimulating(true);
-      setAiState("LISTENING");
+      const [trRes, evRes] = await Promise.all([
+        fetch(`${apiUrl}/v1/calls/${callId}/transcript`),
+        fetch(`${apiUrl}/v1/calls/${callId}/events`),
+      ]);
+
+      if (trRes.ok) {
+        const trData = await trRes.json();
+        const formatted: TranscriptItem[] = (trData.utterances || []).map((u: any) => ({
+          utterance_id: u.utterance_id || crypto.randomUUID(),
+          speaker: u.speaker || "caller",
+          text: u.text || "",
+          language: u.language || "ta-IN",
+          confidence: u.confidence || 1.0,
+          is_final: u.is_final ?? true,
+          intent: u.intent,
+          safety_flag: u.safety_flag,
+          timestamp: u.timestamp || u.created_at || new Date().toISOString(),
+        }));
+        setTranscripts(formatted);
+      } else {
+        setTranscripts([]);
+      }
+
+      if (evRes.ok) {
+        const evData = await evRes.json();
+        setCallEvents(evData.events || []);
+      } else {
+        setCallEvents([]);
+      }
+    } catch (err) {
+      console.error("Error loading call snapshot:", err);
+    }
+  };
+
+  // Scroll transcript to bottom on turn update
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [transcripts, partialDraft]);
+
+  // Selected call metadata
+  const selectedCall = useMemo(() => {
+    return (
+      activeCalls.find((c) => c.call_id === selectedCallId) ||
+      recentCalls.find((c) => c.call_id === selectedCallId) ||
+      null
+    );
+  }, [activeCalls, recentCalls, selectedCallId]);
+
+  // Trigger Simulation Scenario
+  const runSimulation = async () => {
+    setIsSimulating(true);
+    try {
       const res = await fetch(`${apiUrl}/v1/telephony/simulate/conversation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scenario: selectedScenario,
-          caller_phone: callerPhone,
+          scenario_key: simScenario,
+          caller_number: simCallerPhone,
+          interruption_at_turn: simScenario === "interruption" ? 1 : null,
         }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setActiveSessionId(data.session_id);
-        fetchSessions();
+        const result = await res.json();
+        setIsSimModalOpen(false);
+        // Refresh and select the simulation call
+        await fetchCalls();
+        if (result.call_id) {
+          selectCall(result.call_id);
+        }
       }
     } catch (e) {
-      console.error("Failed to trigger conversation simulation", e);
+      console.error("Simulation error:", e);
     } finally {
-      setSimulating(false);
+      setIsSimulating(false);
     }
   };
 
-  const clearTranscripts = () => {
-    setTranscripts([]);
-    setPartialDraft(null);
-    setAiState("IDLE");
-  };
+  // Filtered Events
+  const filteredEvents = useMemo(() => {
+    if (eventFilter === "ALL") return callEvents;
+    return callEvents.filter((ev) => {
+      const type = ev.event_type;
+      if (eventFilter === "TRANSCRIPT") {
+        return type.includes("TRANSCRIPT") || type.includes("LANGUAGE");
+      }
+      if (eventFilter === "CONVERSATION") {
+        return (
+          type.includes("CONVERSATION") ||
+          type.includes("AI_") ||
+          type.includes("TTS_") ||
+          type.includes("INTERRUPTED")
+        );
+      }
+      if (eventFilter === "ERRORS") {
+        return type.includes("ERROR") || type.includes("SIGNAL");
+      }
+      if (eventFilter === "LATENCY") {
+        return type.includes("LATENCY");
+      }
+      return true;
+    });
+  }, [callEvents, eventFilter]);
 
-  useEffect(() => {
-    fetchSessions();
-    const interval = setInterval(fetchSessions, 3000);
-    return () => clearInterval(interval);
-  }, [apiUrl]);
-
-  const getAiStatePill = (state: string) => {
-    switch (state) {
-      case "LISTENING":
-        return (
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
-            <Mic className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
-            <span>LISTENING (Inbound 8kHz PCM)</span>
-          </div>
-        );
-      case "TRANSCRIBING":
-        return (
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300">
-            <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
-            <span>TRANSCRIBING (Sarvam STT)</span>
-          </div>
-        );
-      case "THINKING":
-        return (
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-900 border border-purple-300">
-            <Cpu className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
-            <span>REASONING (Gemini 2.5 Flash)</span>
-          </div>
-        );
-      case "SPEAKING":
-        return (
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-900 border border-emerald-300">
-            <Volume2 className="w-3.5 h-3.5 text-emerald-600 animate-bounce" />
-            <span>SPEAKING (Sarvam Bulbul TTS)</span>
-          </div>
-        );
-      case "INTERRUPTED":
-        return (
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-900 border border-rose-300">
-            <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-            <span>BARGE-IN DETECTED (Audio Cleared)</span>
-          </div>
-        );
-      default:
-        return (
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            <span className="w-2 h-2 rounded-full bg-slate-400" />
-            <span>PIPELINE READY (IDLE)</span>
-          </div>
-        );
-    }
-  };
-
-  const getLanguageLabel = (code: string) => {
-    switch (code) {
-      case "ta-IN":
-        return "Tamil (தமிழ்)";
-      case "hi-IN":
-        return "Hindi (हिन्दी)";
-      case "en-IN":
-        return "Indian English";
-      default:
-        return code;
-    }
+  // Language display helper
+  const getLanguageLabel = (langCode?: string) => {
+    if (!langCode) return "Unknown";
+    if (langCode.includes("ta")) return "Tamil (ta-IN)";
+    if (langCode.includes("hi")) return "Hindi (hi-IN)";
+    if (langCode.includes("en")) return "English (en-IN)";
+    return langCode;
   };
 
   return (
-    <div className="space-y-6">
-      {/* Title & Description */}
-      <div>
-        <div className="flex items-center space-x-2 text-xs font-semibold text-emerald-700 uppercase tracking-wider">
-          <Activity className="w-4 h-4" />
-          <span>Phase 2 Multilingual AI Voice Conversation Console</span>
-        </div>
-        <h1 className="text-2xl font-bold text-slate-900 mt-1">Live AI Voice Helpline Gateway</h1>
-        <p className="text-sm text-slate-600 mt-1 max-w-4xl">
-          Complete end-to-end voice loop for NHAA 14566. Orchestrates Sarvam Realtime STT (<code>saaras:v3</code>),
-          Google Gemini (<code>gemini-2.5-flash</code>), and Sarvam Bulbul TTS (<code>bulbul:v3</code>) directly
-          over canonical 8kHz PCM telephony media streams with barge-in interruption.
-        </p>
-      </div>
-
-      {/* Voice Simulation & Scenario Test Harness */}
-      <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex items-center space-x-2">
-            <Radio className="w-4 h-4 text-blue-600" />
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-              Multilingual Voice Pipeline Simulator
-            </h3>
+    <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* Top Header Bar */}
+      <header className="h-14 border-b border-slate-800 px-6 flex items-center justify-between bg-slate-900/60 backdrop-blur shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <Radio className="h-4 w-4 animate-pulse" />
           </div>
-          <div className="flex items-center space-x-2">
-            {getAiStatePill(aiState)}
-            <div className="inline-flex items-center space-x-1 px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium">
-              <Globe className="w-3.5 h-3.5 text-slate-500" />
-              <span>{getLanguageLabel(currentLanguage)}</span>
-            </div>
+          <div>
+            <h1 className="text-sm font-semibold tracking-wide text-white flex items-center gap-2">
+              SAMVED Operator Console
+              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+                Phase 3: Realtime Observation
+              </span>
+            </h1>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-          <div className="md:col-span-6 space-y-1">
-            <label className="text-xs font-semibold text-slate-700">Select Test Scenario:</label>
-            <select
-              value={selectedScenario}
-              onChange={(e) => setSelectedScenario(e.target.value)}
-              className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {SCENARIOS.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+        <div className="flex items-center gap-4">
+          {/* System Mode */}
+          <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-md border border-slate-800">
+            <Server className="h-3.5 w-3.5 text-slate-400" />
+            <span>Mode:</span>
+            <span className="font-mono font-semibold text-emerald-400">{systemMode}</span>
           </div>
 
-          <div className="md:col-span-3 space-y-1">
-            <label className="text-xs font-semibold text-slate-700">Masked Caller Phone:</label>
-            <input
-              type="text"
-              value={callerPhone}
-              onChange={(e) => setCallerPhone(e.target.value)}
-              className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded bg-slate-50 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-
-          <div className="md:col-span-3 flex items-end space-x-2 pt-5">
-            <button
-              onClick={startConversationSimulation}
-              disabled={simulating}
-              className="flex-1 inline-flex items-center justify-center space-x-1.5 px-3 py-2 text-xs font-semibold rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{simulating ? "Starting..." : "Run Voice Simulation"}</span>
-            </button>
-            <button
-              onClick={clearTranscripts}
-              title="Clear transcript history"
-              className="px-2.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-
-        <p className="text-[11px] text-slate-500 italic">
-          {SCENARIOS.find((s) => s.key === selectedScenario)?.desc}
-        </p>
-      </div>
-
-      {/* Latency Telemetry Metrics Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>STT Partial Latency</span>
-            <Mic className="w-3.5 h-3.5 text-blue-500" />
-          </div>
-          <div className="text-lg font-bold font-mono text-slate-900 mt-1">
-            {latencies.stt_ms ? `${latencies.stt_ms} ms` : "—"}
-          </div>
-          <p className="text-[10px] text-slate-500 mt-0.5">Target: &lt; 200 ms</p>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Gemini Reasoning</span>
-            <Cpu className="w-3.5 h-3.5 text-purple-500" />
-          </div>
-          <div className="text-lg font-bold font-mono text-slate-900 mt-1">
-            {latencies.llm_ms ? `${latencies.llm_ms} ms` : "—"}
-          </div>
-          <p className="text-[10px] text-slate-500 mt-0.5">Target: &lt; 400 ms</p>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>TTS First Frame</span>
-            <Volume2 className="w-3.5 h-3.5 text-emerald-500" />
-          </div>
-          <div className="text-lg font-bold font-mono text-slate-900 mt-1">
-            {latencies.tts_ms ? `${latencies.tts_ms} ms` : "—"}
-          </div>
-          <p className="text-[10px] text-slate-500 mt-0.5">Target: &lt; 200 ms</p>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Total Turn Roundtrip</span>
-            <Clock className="w-3.5 h-3.5 text-slate-700" />
-          </div>
+          {/* WebSocket Connection Status Pill */}
           <div
-            className={`text-lg font-bold font-mono mt-1 ${
-              latencies.total_ms > 0 && latencies.total_ms < 900
-                ? "text-emerald-600"
-                : "text-slate-900"
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              wsStatus === "connected"
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                : wsStatus === "reconnecting"
+                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                : "bg-red-500/10 border-red-500/30 text-red-400"
             }`}
           >
-            {latencies.total_ms ? `${latencies.total_ms} ms` : "—"}
+            {wsStatus === "connected" ? (
+              <>
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                <span>WS Connected</span>
+              </>
+            ) : wsStatus === "reconnecting" ? (
+              <>
+                <RefreshCw className="h-3 w-3 animate-spin text-amber-400" />
+                <span>Reconnecting ({reconnectCount})...</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-3 w-3 text-red-400" />
+                <button onClick={connect} className="underline hover:text-white">
+                  WS Reconnect
+                </button>
+              </>
+            )}
           </div>
-          <p className="text-[10px] text-slate-500 mt-0.5">Conversational SLA: &lt; 800 ms</p>
-        </div>
-      </div>
 
-      {/* Live Conversation & Dialogue Transcript Viewer */}
-      <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[440px]">
-        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <MessageSquare className="w-4 h-4 text-slate-700" />
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Live Multilingual Transcript & AI Dialogue Stream
-            </h3>
-          </div>
-          <div className="text-xs text-slate-500 font-mono">
-            {transcripts.length} turns recorded
-          </div>
-        </div>
-
-        <div
-          ref={transcriptScrollRef}
-          className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50"
-        >
-          {transcripts.length === 0 && !partialDraft && (
-            <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 text-xs">
-              <Mic className="w-8 h-8 mb-2 stroke-1 text-slate-300" />
-              <p className="font-medium text-slate-600">No active voice dialogue</p>
-              <p className="text-[11px] mt-1 max-w-sm">
-                Click &quot;Run Voice Simulation&quot; above or connect an incoming call to observe real-time
-                multilingual STT, Gemini reasoning, and speech synthesis.
-              </p>
-            </div>
-          )}
-
-          {transcripts.map((item) => {
-            if (item.speaker === "system") {
-              return (
-                <div
-                  key={item.id}
-                  className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start space-x-2"
-                >
-                  <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 font-mono text-[11px] leading-relaxed">
-                    {item.text}
-                  </div>
-                  <span className="text-[10px] text-rose-400">{item.timestamp}</span>
-                </div>
-              );
-            }
-
-            const isCaller = item.speaker === "caller";
-
-            return (
-              <div
-                key={item.id}
-                className={`flex flex-col ${isCaller ? "items-start" : "items-end"}`}
-              >
-                <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 mb-1 px-1">
-                  <span className="font-semibold text-slate-700">
-                    {isCaller ? "CALLER" : "SAMVED AI"}
-                  </span>
-                  {item.language && (
-                    <span className="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 text-[10px]">
-                      {item.language}
-                    </span>
-                  )}
-                  {item.intent && (
-                    <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 text-[10px] font-mono">
-                      {item.intent}
-                    </span>
-                  )}
-                  {item.safety_flag && (
-                    <span className="px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 text-[10px] font-bold">
-                      SAFETY_HOOK
-                    </span>
-                  )}
-                  <span className="text-[10px]">{item.timestamp}</span>
-                </div>
-
-                <div
-                  className={`max-w-[85%] rounded-lg p-3 text-xs leading-relaxed shadow-sm ${
-                    isCaller
-                      ? "bg-white text-slate-900 border border-slate-200"
-                      : "bg-blue-600 text-white border border-blue-700"
-                  }`}
-                >
-                  {item.text}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Live Typing / Partial STT Draft */}
-          {partialDraft && (
-            <div className="flex flex-col items-start">
-              <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 mb-1 px-1">
-                <span className="font-semibold text-amber-700">CALLER (Transcribing...)</span>
-              </div>
-              <div className="max-w-[85%] rounded-lg p-3 text-xs italic bg-amber-50 text-amber-900 border border-amber-200 shadow-sm animate-pulse">
-                {partialDraft} ...
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Active Telephony Sessions List */}
-      <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <PhoneCall className="w-4 h-4 text-slate-700" />
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-              Active Telephony Sessions
-            </h3>
-            <span className="text-xs font-semibold bg-slate-200 text-slate-800 px-2 py-0.5 rounded-full">
-              {sessions.length}
-            </span>
-          </div>
+          {/* Action Buttons */}
           <button
-            onClick={fetchSessions}
-            disabled={loading}
-            className="inline-flex items-center space-x-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            onClick={() => setIsSimModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span>Refresh</span>
+            <Play className="h-3.5 w-3.5" />
+            Launch Simulation
+          </button>
+
+          <button
+            onClick={fetchCalls}
+            className="p-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            title="Refresh active calls"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
           </button>
         </div>
+      </header>
 
-        <div className="overflow-x-auto">
-          {sessions.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">
-              No active telephony calls currently in progress. Use the simulator above or connect via Exotel webhook.
-            </div>
+      {/* Main Workspace Layout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Sidebar: Master Call List */}
+        <aside className="w-80 border-r border-slate-800 bg-slate-900/40 flex flex-col shrink-0">
+          {/* Tabs */}
+          <div className="flex border-b border-slate-800 p-2 gap-2">
+            <button
+              onClick={() => setActiveTab("ACTIVE")}
+              className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-2 ${
+                activeTab === "ACTIVE"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+              }`}
+            >
+              <Radio className="h-3 w-3" />
+              Active ({activeCalls.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("RECENT")}
+              className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-2 ${
+                activeTab === "RECENT"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+              }`}
+            >
+              <Clock className="h-3 w-3" />
+              Recent ({recentCalls.length})
+            </button>
+          </div>
+
+          {/* Calls List */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {(activeTab === "ACTIVE" ? activeCalls : recentCalls).length === 0 ? (
+              <div className="text-center py-12 px-4">
+                <PhoneCall className="h-8 w-8 text-slate-600 mx-auto mb-2 opacity-50" />
+                <p className="text-xs text-slate-500">
+                  {activeTab === "ACTIVE" ? "No active telephony calls." : "No recent calls recorded."}
+                </p>
+                {activeTab === "ACTIVE" && (
+                  <button
+                    onClick={() => setIsSimModalOpen(true)}
+                    className="mt-3 text-xs text-indigo-400 hover:text-indigo-300 underline"
+                  >
+                    Start a test simulation
+                  </button>
+                )}
+              </div>
+            ) : (
+              (activeTab === "ACTIVE" ? activeCalls : recentCalls).map((call) => {
+                const isSelected = call.call_id === selectedCallId;
+                return (
+                  <div
+                    key={call.call_id}
+                    onClick={() => selectCall(call.call_id)}
+                    className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                      isSelected
+                        ? "bg-indigo-950/40 border-indigo-500 shadow-sm"
+                        : "bg-slate-900/80 border-slate-800/80 hover:border-slate-700 hover:bg-slate-800/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-mono text-xs font-semibold text-slate-200">
+                        {call.caller_masked_number}
+                      </span>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          call.is_active
+                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                            : "bg-slate-800 text-slate-400 border border-slate-700"
+                        }`}
+                      >
+                        {call.state}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span className="truncate max-w-[120px] font-mono text-slate-500">
+                        {call.call_id}
+                      </span>
+                      <span>{call.duration_seconds}s</span>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-800/60">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300">
+                        {getLanguageLabel(call.current_language)}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {call.conversation_state}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </aside>
+
+        {/* Center: Call Detail & Live Transcripts */}
+        <main className="flex-1 flex flex-col bg-slate-950 overflow-hidden border-r border-slate-800">
+          {selectedCall ? (
+            <>
+              {/* Selected Call Header */}
+              <div className="border-b border-slate-800 bg-slate-900/30 p-4 shrink-0">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 font-mono font-bold">
+                      <PhoneCall className="h-5 w-5 text-indigo-400" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-bold text-white font-mono">
+                          {selectedCall.caller_masked_number}
+                        </h2>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700">
+                          {selectedCall.provider}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 font-mono">ID: {selectedCall.call_id}</p>
+                    </div>
+                  </div>
+
+                  {/* AI Conversation State Pill */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
+                        Dialogue State
+                      </span>
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1.5 border ${
+                          aiState === "SPEAKING"
+                            ? "bg-purple-500/20 text-purple-300 border-purple-500/40 animate-pulse"
+                            : aiState === "THINKING"
+                            ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                            : aiState === "TRANSCRIBING"
+                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                            : aiState === "INTERRUPTED"
+                            ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                            : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                        }`}
+                      >
+                        {aiState === "SPEAKING" ? (
+                          <Volume2 className="h-3 w-3" />
+                        ) : aiState === "THINKING" ? (
+                          <Cpu className="h-3 w-3" />
+                        ) : aiState === "TRANSCRIBING" ? (
+                          <Mic className="h-3 w-3" />
+                        ) : aiState === "INTERRUPTED" ? (
+                          <AlertTriangle className="h-3 w-3" />
+                        ) : (
+                          <Activity className="h-3 w-3" />
+                        )}
+                        {aiState || selectedCall.conversation_state}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
+                        Language
+                      </span>
+                      <span className="text-xs px-2.5 py-1 rounded-md bg-slate-800 text-slate-200 border border-slate-700 flex items-center gap-1">
+                        <Globe className="h-3 w-3 text-indigo-400" />
+                        {getLanguageLabel(currentLanguage || selectedCall.current_language)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Turn Latency Instrumentation Bar */}
+                <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-800/60 text-xs">
+                  <div className="bg-slate-900/60 p-2 rounded border border-slate-800/80 flex items-center justify-between">
+                    <span className="text-slate-400">STT Latency:</span>
+                    <span className="font-mono text-emerald-400 font-semibold">{latencies.stt_ms}ms</span>
+                  </div>
+                  <div className="bg-slate-900/60 p-2 rounded border border-slate-800/80 flex items-center justify-between">
+                    <span className="text-slate-400">LLM Latency:</span>
+                    <span className="font-mono text-blue-400 font-semibold">{latencies.llm_ms}ms</span>
+                  </div>
+                  <div className="bg-slate-900/60 p-2 rounded border border-slate-800/80 flex items-center justify-between">
+                    <span className="text-slate-400">TTS Latency:</span>
+                    <span className="font-mono text-purple-400 font-semibold">{latencies.tts_ms}ms</span>
+                  </div>
+                  <div className="bg-slate-900/60 p-2 rounded border border-slate-800/80 flex items-center justify-between">
+                    <span className="text-slate-400">Turn Total:</span>
+                    <span className="font-mono text-indigo-300 font-semibold">{latencies.total_ms}ms</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Transcript Chronological Stream */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {transcripts.length === 0 && !partialDraft ? (
+                  <div className="text-center py-20 text-slate-500">
+                    <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Awaiting conversation audio stream...</p>
+                  </div>
+                ) : (
+                  <>
+                    {transcripts.map((item) => {
+                      const isAgent = item.speaker === "agent";
+                      return (
+                        <div
+                          key={item.utterance_id}
+                          className={`flex gap-3 ${isAgent ? "justify-end" : "justify-start"}`}
+                        >
+                          {!isAgent && (
+                            <div className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300">
+                              <User className="h-4 w-4" />
+                            </div>
+                          )}
+
+                          <div
+                            className={`max-w-xl rounded-2xl p-4 shadow-sm border ${
+                              isAgent
+                                ? "bg-indigo-950/40 border-indigo-700/50 text-indigo-100 rounded-tr-none"
+                                : "bg-slate-900 border-slate-800 text-slate-100 rounded-tl-none"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 mb-1.5 text-xs text-slate-400">
+                              <span className="font-semibold text-slate-300">
+                                {isAgent ? "SAMVED AI" : "Caller"}
+                              </span>
+                              <span>•</span>
+                              <span>{getLanguageLabel(item.language)}</span>
+                              {item.confidence && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono text-[10px] text-slate-500">
+                                    {Math.round(item.confidence * 100)}% conf
+                                  </span>
+                                </>
+                              )}
+                              {item.intent && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-900/60 text-indigo-300 font-mono">
+                                  {item.intent}
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-sm leading-relaxed">{item.text}</p>
+                          </div>
+
+                          {isAgent && (
+                            <div className="h-8 w-8 rounded-full bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center shrink-0 text-indigo-300">
+                              <Bot className="h-4 w-4" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Partial Tentative Draft Bubble */}
+                    {partialDraft && (
+                      <div className="flex gap-3 justify-start">
+                        <div className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-400">
+                          <User className="h-4 w-4" />
+                        </div>
+                        <div className="max-w-xl rounded-2xl rounded-tl-none p-4 bg-slate-900/50 border border-indigo-500/40 text-slate-300 shadow-sm animate-pulse">
+                          <div className="flex items-center gap-2 mb-1 text-xs text-indigo-400 font-medium">
+                            <span className="h-2 w-2 rounded-full bg-indigo-400 animate-ping" />
+                            <span>Caller speaking (provisional partial)...</span>
+                          </div>
+                          <p className="text-sm italic text-slate-200">{partialDraft}</p>
+                        </div>
+                      </div>
+                    )}
+                    <div ref={transcriptEndRef} />
+                  </>
+                )}
+              </div>
+            </>
           ) : (
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                  <th className="py-2.5 px-4">Call ID</th>
-                  <th className="py-2.5 px-4">Session ID</th>
-                  <th className="py-2.5 px-4">Caller (Masked)</th>
-                  <th className="py-2.5 px-4">Provider</th>
-                  <th className="py-2.5 px-4">Telephony State</th>
-                  <th className="py-2.5 px-4">AI State</th>
-                  <th className="py-2.5 px-4">Language</th>
-                  <th className="py-2.5 px-4">Frames</th>
-                  <th className="py-2.5 px-4">Gaps</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {sessions.map((sess) => (
-                  <tr key={sess.session_id} className="hover:bg-slate-50 font-mono">
-                    <td className="py-2.5 px-4 font-semibold text-slate-900">{sess.call_id}</td>
-                    <td className="py-2.5 px-4 text-slate-600">{sess.session_id}</td>
-                    <td className="py-2.5 px-4 text-slate-800">{sess.caller_masked_number}</td>
-                    <td className="py-2.5 px-4 uppercase text-slate-600">{sess.provider}</td>
-                    <td className="py-2.5 px-4">{sess.state}</td>
-                    <td className="py-2.5 px-4 font-semibold text-blue-700">
-                      {sess.conversation_state || "LISTENING"}
-                    </td>
-                    <td className="py-2.5 px-4 text-slate-700">
-                      {sess.current_language || "ta-IN"}
-                    </td>
-                    <td className="py-2.5 px-4 text-slate-700">{sess.inbound_frames_count}</td>
-                    <td className="py-2.5 px-4">
-                      {sess.sequence_gaps_count > 0 ? (
-                        <span className="text-amber-600 font-bold">{sess.sequence_gaps_count}</span>
-                      ) : (
-                        <span className="text-slate-400">0</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500">
+              <Layers className="h-12 w-12 mb-3 text-slate-600 opacity-60" />
+              <h3 className="text-base font-semibold text-slate-300 mb-1">No Call Selected</h3>
+              <p className="text-xs max-w-sm text-slate-500 mb-4">
+                Select an active or recent call from the sidebar, or launch a simulated multilingual call.
+              </p>
+              <button
+                onClick={() => setIsSimModalOpen(true)}
+                className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+              >
+                Launch Simulation Scenario
+              </button>
+            </div>
           )}
-        </div>
+        </main>
+
+        {/* Right Sidebar: Realtime Event Timeline & Filter */}
+        <aside className="w-96 bg-slate-900/50 flex flex-col shrink-0">
+          {/* Timeline Header & Filters */}
+          <div className="border-b border-slate-800 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Activity className="h-3.5 w-3.5 text-indigo-400" />
+                Event Stream ({filteredEvents.length})
+              </span>
+              <button
+                onClick={() => setCallEvents([])}
+                className="text-[10px] text-slate-500 hover:text-slate-300"
+              >
+                Clear
+              </button>
+            </div>
+
+            {/* Filter Pills */}
+            <div className="flex flex-wrap gap-1">
+              {(["ALL", "TRANSCRIPT", "CONVERSATION", "ERRORS", "LATENCY"] as EventFilterCategory[]).map(
+                (f) => (
+                  <button
+                    key={f}
+                    onClick={() => setEventFilter(f)}
+                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                      eventFilter === f
+                        ? "bg-indigo-600 text-white font-semibold"
+                        : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+
+          {/* Event Rows */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {filteredEvents.length === 0 ? (
+              <p className="text-center py-12 text-xs text-slate-500">No events captured yet.</p>
+            ) : (
+              filteredEvents.map((ev, idx) => {
+                const type = ev.event_type;
+                const isError = type.includes("ERROR") || type.includes("SIGNAL");
+                const isTts = type.includes("TTS") || type.includes("SPEAKING");
+                const isLatency = type.includes("LATENCY");
+
+                return (
+                  <div
+                    key={ev.event_id || `${type}-${idx}`}
+                    className={`p-2.5 rounded-md border text-xs transition-colors hover:bg-slate-800/80 ${
+                      isError
+                        ? "bg-rose-950/20 border-rose-800/50"
+                        : isLatency
+                        ? "bg-cyan-950/20 border-cyan-800/50"
+                        : isTts
+                        ? "bg-purple-950/20 border-purple-800/50"
+                        : "bg-slate-900 border-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span
+                        className={`font-mono text-[10px] font-bold ${
+                          isError
+                            ? "text-rose-400"
+                            : isLatency
+                            ? "text-cyan-400"
+                            : isTts
+                            ? "text-purple-400"
+                            : "text-indigo-400"
+                        }`}
+                      >
+                        {type}
+                      </span>
+                      <button
+                        onClick={() => setInspectedEvent(ev)}
+                        className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1"
+                        title="Inspect full JSON payload"
+                      >
+                        <Eye className="h-3 w-3" />
+                        Inspect
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-300 truncate">
+                      {String(
+                        (ev.payload as any)?.text ||
+                          (ev.payload as any)?.response_text ||
+                          (ev.payload as any)?.new_state ||
+                          (ev.payload as any)?.message ||
+                          (typeof ev.payload === "object" ? JSON.stringify(ev.payload) : "")
+                      )}
+                    </p>
+
+                    <div className="mt-1 text-[10px] text-slate-500 font-mono">
+                      {new Date(ev.timestamp).toLocaleTimeString()}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </aside>
       </div>
+
+      {/* Event Inspector Modal */}
+      {inspectedEvent && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-indigo-400" />
+                <h3 className="text-sm font-bold text-white font-mono">{inspectedEvent.event_type}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(inspectedEvent, null, 2));
+                    setCopiedJson(true);
+                    setTimeout(() => setCopiedJson(false), 2000);
+                  }}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 flex items-center gap-1 transition-colors"
+                >
+                  {copiedJson ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                  {copiedJson ? "Copied" : "Copy JSON"}
+                </button>
+                <button
+                  onClick={() => setInspectedEvent(null)}
+                  className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 bg-slate-950 font-mono text-xs text-emerald-400">
+              <pre>{JSON.stringify(inspectedEvent, null, 2)}</pre>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Simulation Runner Modal */}
+      {isSimModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Play className="h-4 w-4 text-indigo-400" />
+                Launch Multi-turn Conversation Simulation
+              </h3>
+              <button
+                onClick={() => setIsSimModalOpen(false)}
+                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Select Evaluation Scenario:
+                </label>
+                <div className="space-y-2">
+                  {SCENARIOS.map((sc) => (
+                    <div
+                      key={sc.key}
+                      onClick={() => setSimScenario(sc.key)}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                        simScenario === sc.key
+                          ? "bg-indigo-950/60 border-indigo-500 shadow-sm"
+                          : "bg-slate-800/60 border-slate-700/60 hover:border-slate-600"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-white">{sc.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-900 text-indigo-300">
+                          {sc.lang}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">{sc.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Caller Phone Number (Will be masked):
+                </label>
+                <input
+                  type="text"
+                  value={simCallerPhone}
+                  onChange={(e) => setSimCallerPhone(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-xs text-white font-mono focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  onClick={() => setIsSimModalOpen(false)}
+                  className="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-xs text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={isSimulating}
+                  onClick={runSimulation}
+                  className="px-4 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isSimulating ? (
+                    <>
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      Running Simulation...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3 w-3" />
+                      Start Simulation
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

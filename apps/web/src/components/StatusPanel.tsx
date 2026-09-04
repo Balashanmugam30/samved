@@ -57,7 +57,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
             System Operational Status
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Real-time telemetry and dependency health for SAMVED Phase 0
+            Real-time telemetry and dependency health for SAMVED Phase 1 (Telephony Ingress)
           </p>
         </div>
         <button
@@ -153,22 +153,24 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
               <PhoneCall className="w-4 h-4 text-slate-700" />
               <span className="text-xs font-semibold text-slate-900">Telephony Ingress</span>
             </div>
-            {getStatusIcon("mock")}
+            {getStatusIcon("online")}
           </div>
           <div className="mt-3 text-xs space-y-1">
             <div className="flex justify-between text-slate-500">
               <span>Provider:</span>
               <span className="text-slate-800 font-medium">
-                {apiData?.dependencies?.telephony?.provider || "MockTelephony"}
+                {apiData?.dependencies?.telephony?.provider || "Exotel Adapter"}
               </span>
             </div>
             <div className="flex justify-between text-slate-500">
-              <span>Status:</span>
-              <span className="text-blue-700 font-medium">Mock Active (Dev)</span>
+              <span>Active Calls:</span>
+              <span className="text-emerald-700 font-bold font-mono">
+                {apiData?.active_calls_count ?? 0}
+              </span>
             </div>
             <div className="flex justify-between text-slate-500">
-              <span>Real Exotel:</span>
-              <span className="text-slate-500">Phase 1 Target</span>
+              <span>Streaming:</span>
+              <span className="text-slate-700 font-medium">8kHz PCM s16le (WS)</span>
             </div>
           </div>
         </div>

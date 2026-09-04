@@ -37,11 +37,20 @@ class Settings(BaseSettings):
     REDIS_URL: Optional[str] = None
 
     # Telephony Provider (Phase 1+)
+    EXOTEL_ENABLED: bool = False
     EXOTEL_ACCOUNT_SID: Optional[str] = None
     EXOTEL_API_KEY: Optional[str] = None
     EXOTEL_API_TOKEN: Optional[str] = None
     EXOTEL_SUB_DOMAIN: str = "api.exotel.com"
     EXOTEL_CALLER_ID: Optional[str] = None
+    EXOTEL_PHONE_NUMBER: Optional[str] = None
+    EXOTEL_WEBHOOK_BASE_URL: Optional[str] = None
+    EXOTEL_STREAM_URL: Optional[str] = None
+    EXOTEL_VERIFY_SIGNATURE: bool = False
+    EXOTEL_WEBHOOK_SECRET: Optional[str] = None
+
+    PUBLIC_BASE_URL: str = "http://localhost:8000"
+    PUBLIC_WS_BASE_URL: str = "ws://localhost:8000"
 
     TWILIO_ACCOUNT_SID: Optional[str] = None
     TWILIO_AUTH_TOKEN: Optional[str] = None
@@ -73,6 +82,16 @@ class Settings(BaseSettings):
 
     def is_live(self) -> bool:
         return self.APP_MODE == "LIVE"
+
+    def has_exotel_credentials(self) -> bool:
+        return bool(
+            self.EXOTEL_ACCOUNT_SID
+            and self.EXOTEL_API_KEY
+            and self.EXOTEL_API_TOKEN
+        )
+
+    def is_exotel_live_ready(self) -> bool:
+        return self.is_live() and self.EXOTEL_ENABLED and self.has_exotel_credentials()
 
 
 @lru_cache()

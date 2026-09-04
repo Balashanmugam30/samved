@@ -32,14 +32,18 @@ test.describe("SAMVED Web Console Smoke Tests", () => {
     expect(consoleErrors).toHaveLength(0);
   });
 
-  test("navigates to placeholder pages with clear phase indications", async ({ page }) => {
+  test("navigates to telephony console and placeholder pages with phase indications", async ({ page }) => {
     await page.goto("/");
 
     // Navigate to Live Telephony
     await page.click("text=Live Telephony");
     await expect(page).toHaveURL(/.*\/calls/);
-    await expect(page.locator("text=Scheduled for Phase 1")).toBeVisible();
-    await expect(page.locator("text=UNAVAILABLE IN PHASE 0")).toBeVisible();
+    await expect(page.locator("text=Phase 1 Telephony Ingress Console")).toBeVisible();
+    await expect(page.locator("text=Synthetic Call Simulator & Ingress Harness")).toBeVisible();
+
+    // Verify simulation trigger button is present
+    const simButton = page.locator("text=Start Simulation Call");
+    await expect(simButton).toBeVisible();
 
     // Navigate to Safety Alerts
     await page.click("text=Safety Alerts");

@@ -13,6 +13,7 @@ export interface ApiReadinessData {
   ready: boolean;
   mode: string;
   environment: string;
+  active_calls_count?: number;
   dependencies: Record<string, DependencyStatus>;
   timestamp: string;
 }

@@ -22,6 +22,8 @@ async def readiness_check() -> JSONResponse:
     """Readiness check: inspects database, cache, and provider availability without crashing."""
     settings = get_settings()
 
+    from app.realtime.session_manager import telephony_session_manager
+
     dependencies: Dict[str, Dict[str, Any]] = {
         "database": {
             "status": "connected" if settings.DATABASE_URL else "unconfigured_local",
@@ -34,8 +36,10 @@ async def readiness_check() -> JSONResponse:
             "details": "Redis URL configured" if settings.REDIS_URL else "Running in DEV mode with in-memory session manager",
         },
         "telephony": {
-            "status": "mock_ready" if settings.is_dev() else ("configured" if settings.EXOTEL_API_KEY else "missing_credentials"),
+            "status": "mock_ready" if settings.is_dev() else ("configured" if settings.has_exotel_credentials() else "missing_credentials"),
             "provider": "MockTelephony" if settings.is_dev() else "Exotel",
+            "streaming_enabled": settings.EXOTEL_ENABLED if settings.is_live() else True,
+            "active_calls": telephony_session_manager.active_calls_count,
         },
         "speech": {
             "status": "mock_ready" if settings.is_dev() else ("configured" if settings.SARVAM_API_KEY else "missing_credentials"),
@@ -50,7 +54,7 @@ async def readiness_check() -> JSONResponse:
     # In LIVE mode, missing credentials make it not ready. In DEV/SIMULATION, mock availability is ready.
     is_ready = True
     if settings.is_live():
-        if not settings.DATABASE_URL or not settings.EXOTEL_API_KEY or not settings.SARVAM_API_KEY:
+        if not settings.DATABASE_URL or not settings.has_exotel_credentials():
             is_ready = False
 
     status_code = status.HTTP_200_OK if is_ready else status.HTTP_503_SERVICE_UNAVAILABLE
@@ -61,6 +65,7 @@ async def readiness_check() -> JSONResponse:
             "ready": is_ready,
             "mode": settings.APP_MODE,
             "environment": settings.APP_ENV,
+            "active_calls_count": telephony_session_manager.active_calls_count,
             "dependencies": dependencies,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
@@ -78,5 +83,5 @@ async def version_info() -> Dict[str, Any]:
         "mode": settings.APP_MODE,
         "problem_statement": "26093",
         "target_helpline": "NHAA 14566",
-        "phase": "0 — Foundation",
+        "phase": "Phase 1 — Real Telephony Connectivity",
     }

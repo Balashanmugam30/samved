@@ -17,6 +17,18 @@ class TelephonyProvider(Protocol):
         """Checks connectivity to telephony API / gateway."""
         ...
 
+    def validate_webhook(self, headers: Dict[str, str], raw_body: bytes) -> bool:
+        """Validates incoming webhook authenticity (e.g. HMAC signature)."""
+        ...
+
+    def create_streaming_instruction(self, session_id: str, ws_stream_url: str) -> Dict[str, Any]:
+        """Generates the provider response instruction pointing to the WebSocket stream."""
+        ...
+
+    def format_outbound_media(self, stream_sid: str, pcm_bytes: bytes) -> Dict[str, Any]:
+        """Formats synthesized audio bytes into the provider WebSocket message envelope."""
+        ...
+
 
 @runtime_checkable
 class SpeechToTextProvider(Protocol):

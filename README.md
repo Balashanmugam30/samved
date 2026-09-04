@@ -201,11 +201,13 @@ pnpm dev:web
 
 | Task | Command | Description |
 | :--- | :--- | :--- |
-| **Backend Tests** | `uv run pytest apps/api/tests -v` | Runs 18 unit, config, WebSocket, and contract tests |
+| **Backend Tests** | `uv run pytest apps/api/tests -v` | Runs 30 unit, state machine, webhook, concurrency, and contract tests |
 | **Contract Flow Test** | `uv run pytest apps/api/tests/test_contract_flow.py -v` | Validates end-to-end event schema transport |
+| **Concurrency Test** | `uv run pytest apps/api/tests/test_telephony_concurrency.py -v` | Validates 5 concurrent calls with zero crosstalk |
 | **Frontend Type Check** | `pnpm type-check` | Type-checks all TypeScript packages & web app |
 | **Frontend Build** | `pnpm build` | Compiles production Next.js web application |
 | **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs headless browser smoke tests (Desktop + Mobile) |
+| **Telephony Diagnostics** | `curl http://localhost:8000/v1/telephony/doctor` | Safe credential and public ingress check without secrets |
 | **Docker Compose** | `docker compose up -d` | Starts PostgreSQL, Redis, API, and Web containers |
 
 ---
@@ -218,7 +220,7 @@ pnpm dev:web
 
 ---
 
-## 12. Implementation Status (Phase 0)
+## 12. Implementation Status (Phase 1)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -230,7 +232,14 @@ pnpm dev:web
 | **Next.js Web Console & Operational Status Panel** | ✅ | Phase 0 |
 | **Playwright Browser Smoke Tests** | ✅ | Phase 0 |
 | **CI/CD Pipeline (GitHub Actions)** | ✅ | Phase 0 |
-| **Real Exotel Voice Streaming Integration** | ⏳ | Phase 1 |
+| **Exotel Provider Adapter (`ExotelTelephonyProvider`)** | ✅ | Phase 1 |
+| **Inbound Call Webhook (`/v1/telephony/exotel/inbound`)** | ✅ | Phase 1 |
+| **Call State Machine (`NEW` -> `STREAMING` -> `ENDED`)** | ✅ | Phase 1 |
+| **Realtime Telephony Gateway (`/ws/telephony/exotel`)** | ✅ | Phase 1 |
+| **Realtime Session Manager & Audio Framing (8kHz PCM)** | ✅ | Phase 1 |
+| **Telephony Simulator & Ingress Test Harness** | ✅ | Phase 1 |
+| **Telephony Diagnostics & Live Operator View (`/calls`)** | ✅ | Phase 1 |
+| **Live Exotel Call Verification** | ⚠️ External Credentials Pending | Phase 1 |
 | **Sarvam Realtime Multilingual STT & TTS** | ⏳ | Phase 2 |
 | **Gemini Grounded Dialogue Loop** | ⏳ | Phase 2 |
 | **Deterministic Safety Engine** | ⏳ | Phase 4 |

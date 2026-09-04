@@ -3,8 +3,8 @@
 | Phase | Milestone | Scope & Deliverables | Status |
 | :---: | :--- | :--- | :---: |
 | **0** | **Engineering Foundation** | Monorepo layout, Next.js web shell, FastAPI backend, Event contracts (v1.0), Provider abstractions, Test suite, Playwright validation, CI/CD, and Git setup. | **COMPLETE** |
-| **1** | **Telephony & Media Ingress** | Exotel bidirectional audio streaming integration (8kHz/16kHz μ-law / PCM) over WebSockets; session management. | ⏳ Next |
-| **2** | **Multilingual Speech & Reasoning** | Sarvam real-time STT, Google Gemini conversational intelligence, Sarvam Bulbul TTS voice synthesis pipeline. | ⏳ Scheduled |
+| **1** | **Telephony & Media Ingress** | Exotel bidirectional audio streaming integration (8kHz PCM) over WebSockets, call state machine, session manager, and diagnostic simulator. | **COMPLETE** |
+| **2** | **Multilingual Speech & Reasoning** | Sarvam real-time STT, Google Gemini conversational intelligence, Sarvam Bulbul TTS voice synthesis pipeline. | ⏳ Next |
 | **3** | **Live Transcripts & Event Streaming** | Streaming transcript broadcast to operator console, low-latency partial updates, barge-in detection. | ⏳ Scheduled |
 | **4** | **Deterministic Safety Engine** | High-priority safety rules, immediate physical threat detection, self-harm keywords, supervisor alert dispatch. | ⏳ Scheduled |
 | **5** | **Stress Vulnerability Index (SVI)** | Explainable 0–100 vulnerability index scoring engine with 4 calibrated prototype bands and contributing factor breakdown. | ⏳ Scheduled |

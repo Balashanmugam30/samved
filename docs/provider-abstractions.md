@@ -19,9 +19,8 @@ class TelephonyProvider(Protocol):
     async def terminate_call(self, call_id: str, reason: str = "normal_hangup") -> bool: ...
     async def health_check(self) -> Dict[str, Any]: ...
 ```
-- **Phase 0 Status**: `MockTelephonyProvider` implemented for testing.
-- **Target LIVE Provider**: Exotel Voice Streaming API (Phase 1).
-- **Secondary Provider**: Twilio Media Streams.
+- **Phase 1 Status**: `ExotelTelephonyProvider` (`app/providers/exotel.py`) implemented with REST client, webhook signature verification, and 8kHz PCM streaming normalizer. `MockTelephonyProvider` provides deterministic synthetic audio frame simulation.
+- **Secondary Provider**: Twilio Media Streams (conforms to same `TelephonyProvider` Protocol).
 
 ---
 

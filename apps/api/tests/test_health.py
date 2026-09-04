@@ -16,6 +16,7 @@ def test_ready_check_dev_mode(client):
     data = response.json()
     assert data["ready"] is True
     assert data["mode"] == "DEV"
+    assert "active_calls_count" in data
     assert "dependencies" in data
     assert "database" in data["dependencies"]
     assert "redis" in data["dependencies"]
@@ -33,6 +34,7 @@ def test_version_info(client):
     assert data["mode"] == "DEV"
     assert data["problem_statement"] == "26093"
     assert data["target_helpline"] == "NHAA 14566"
+    assert data["phase"] == "Phase 1 — Real Telephony Connectivity"
 
 
 def test_v1_prefixed_endpoints(client):

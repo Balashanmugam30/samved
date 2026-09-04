@@ -10,6 +10,7 @@ from app.core.errors import register_error_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import RequestContextMiddleware
 from app.realtime.websocket_router import ws_router
+from app.realtime.telephony_ws_router import telephony_ws_router
 
 settings = get_settings()
 logger = setup_logging(
@@ -60,3 +61,6 @@ app.include_router(api_v1_router)
 
 # 6. Include Realtime WebSocket Gateway (/ws)
 app.include_router(ws_router)
+
+# 7. Include Realtime Telephony Media Stream Gateway (/ws/telephony/exotel)
+app.include_router(telephony_ws_router)

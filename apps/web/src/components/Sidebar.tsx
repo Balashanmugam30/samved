@@ -32,7 +32,7 @@ const navItems: NavItem[] = [
     label: "Live Telephony",
     href: "/calls",
     icon: PhoneForwarded,
-    phaseBadge: "Phase 1",
+    phaseBadge: "Active",
   },
   {
     label: "Case Intelligence",
@@ -102,11 +102,11 @@ export const Sidebar: React.FC = () => {
 
       <div className="p-4 border-t border-slate-800 bg-slate-950 text-xs text-slate-400 space-y-2">
         <div className="flex items-center space-x-2">
-          <LifeBuoy className="w-4 h-4 text-blue-400" />
-          <span className="font-semibold text-slate-200">Phase 0 Foundation</span>
+          <LifeBuoy className="w-4 h-4 text-emerald-400" />
+          <span className="font-semibold text-slate-200">Phase 1 Telephony Active</span>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-400">
-          Engineering contracts, mock providers, and operational architecture active.
+          Exotel streaming ingress, session manager, and 8kHz PCM gateway operational.
         </p>
       </div>
     </aside>

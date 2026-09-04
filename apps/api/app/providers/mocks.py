@@ -40,6 +40,49 @@ class MockTelephonyProvider:
             "active_calls_count": len(self.active_calls),
         }
 
+    def validate_webhook(self, headers: Dict[str, str], raw_body: bytes) -> bool:
+        return True
+
+    def create_streaming_instruction(self, session_id: str, ws_stream_url: str) -> Dict[str, Any]:
+        return {
+            "action": "stream",
+            "stream_url": ws_stream_url,
+            "session_id": session_id,
+            "format": "pcm_8000_16bit_mono",
+        }
+
+    def format_outbound_media(self, stream_sid: str, pcm_bytes: bytes) -> Dict[str, Any]:
+        import base64
+        return {
+            "event": "media",
+            "streamSid": stream_sid,
+            "media": {"payload": base64.b64encode(pcm_bytes).decode("utf-8")},
+        }
+
+    def generate_synthetic_frames(self, session_id: str, call_id: str, count: int = 10, simulate_gap: bool = False) -> List[Dict[str, Any]]:
+        import base64
+        frames = []
+        seq = 1
+        dummy_pcm = b"\x00\x01" * 160  # 320 bytes = 20ms of 8kHz 16-bit mono PCM
+        b64_pcm = base64.b64encode(dummy_pcm).decode("utf-8")
+
+        for i in range(count):
+            if simulate_gap and i == 3:
+                seq += 2  # Introduce an intentional gap (skip sequence 4)
+            frames.append({
+                "event": "media",
+                "sequenceNumber": seq,
+                "streamSid": f"stream-{session_id}",
+                "media": {
+                    "track": "inbound",
+                    "chunk": str(seq),
+                    "timestamp": str(seq * 20),
+                    "payload": b64_pcm,
+                },
+            })
+            seq += 1
+        return frames
+
 
 class MockSpeechToTextProvider:
     """Deterministic mock STT provider yielding predictable transcript chunks."""

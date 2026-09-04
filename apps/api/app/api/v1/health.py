@@ -84,5 +84,5 @@ async def version_info() -> Dict[str, Any]:
         "mode": settings.APP_MODE,
         "problem_statement": "26093",
         "target_helpline": "NHAA 14566",
-        "phase": "Phase 1 — Real Telephony Connectivity",
+        "phase": "Phase 2 — Live Multilingual AI Voice Conversation",
     }

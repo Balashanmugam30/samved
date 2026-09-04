@@ -1,11 +1,13 @@
-import asyncio
+﻿import asyncio
 import logging
 from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Deque, Dict, List, Optional, Set
 from fastapi import WebSocket
 
+from app.core.config import get_settings
 from app.core.telephony_state import CallState, CallStateMachine
+from app.realtime.conversation_orchestrator import ConversationOrchestrator
 from app.schemas.telephony import (
     AudioDirection,
     AudioFormat,
@@ -57,6 +59,9 @@ class TelephonySession:
         self.inbound_buffer: Deque[AudioFrame] = deque(maxlen=max_buffer_frames)
         self.outbound_queue: asyncio.Queue[bytes] = asyncio.Queue()
 
+        # Phase 2 Conversational AI Orchestrator
+        self.orchestrator: Optional[ConversationOrchestrator] = None
+
         # Metrics and sequence validation
         self.last_sequence_number: int = 0
         self.inbound_frames_count: int = 0
@@ -64,7 +69,7 @@ class TelephonySession:
         self.sequence_gaps_count: int = 0
         self.dropped_frames_count: int = 0
 
-        # Subscribed callbacks for downstream consumers (e.g. Phase 2 STT)
+        # Subscribed callbacks for downstream consumers
         self.frame_consumers: Set[Any] = set()
 
     def touch(self) -> None:
@@ -97,7 +102,11 @@ class TelephonySession:
 
         self.inbound_buffer.append(frame)
 
-        # Broadcast frame to attached consumers (Phase 2 STT hook)
+        # Feed frame to attached orchestrator for STT & voice activity detection
+        if self.orchestrator:
+            self.orchestrator.on_inbound_audio_frame(frame)
+
+        # Broadcast frame to attached consumers
         for consumer in list(self.frame_consumers):
             try:
                 consumer(frame)
@@ -110,6 +119,10 @@ class TelephonySession:
         self.outbound_queue.put_nowait(pcm_bytes)
 
     def to_info(self) -> TelephonySessionInfo:
+        conv_state = self.orchestrator.state.value if self.orchestrator else None
+        current_lang = self.orchestrator.current_language.value if self.orchestrator else None
+        utts_count = len(self.orchestrator.utterances) if self.orchestrator else 0
+
         return TelephonySessionInfo(
             session_id=self.session_id,
             call_id=self.call_id,
@@ -124,8 +137,66 @@ class TelephonySession:
             inbound_bytes_count=self.inbound_bytes_count,
             sequence_gaps_count=self.sequence_gaps_count,
             dropped_frames_count=self.dropped_frames_count,
+            conversation_state=conv_state,
+            current_language=current_lang,
+            utterances_count=utts_count,
             is_active=self.state_machine.is_active,
         )
+
+
+def create_session_orchestrator(session: TelephonySession) -> ConversationOrchestrator:
+    """Factory creating conversation orchestrator with appropriate live or mock providers."""
+    settings = get_settings()
+    from app.providers.gemini import GeminiLLMProvider
+    from app.providers.mocks import (
+        MockLLMProvider,
+        MockSpeechToTextProvider,
+        MockTextToSpeechProvider,
+    )
+    from app.providers.sarvam_stt import SarvamSTTProvider
+    from app.providers.sarvam_tts import SarvamTTSProvider
+    from app.realtime.connection_manager import manager
+    from app.schemas.events import EventEnvelope, EventType
+
+    # Use live providers only if in LIVE mode with credentials
+    if settings.is_live() and settings.SARVAM_API_KEY and settings.GEMINI_API_KEY:
+        stt = SarvamSTTProvider()
+        llm = GeminiLLMProvider()
+        tts = SarvamTTSProvider()
+        logger.info(f"Initialized LIVE Sarvam STT, Gemini, and Sarvam TTS for session {session.session_id}")
+    else:
+        stt = MockSpeechToTextProvider()
+        llm = MockLLMProvider()
+        tts = MockTextToSpeechProvider()
+        logger.info(f"Initialized MOCK STT, LLM, and TTS for session {session.session_id}")
+
+    def broadcast_to_operator(event_type_str: str, payload: Dict[str, Any]):
+        try:
+            try:
+                ev_type = EventType(event_type_str)
+            except ValueError:
+                ev_type = EventType.AI_RESPONSE_STARTED
+
+            envelope = EventEnvelope(
+                event_type=ev_type,
+                session_id=session.session_id,
+                call_id=session.call_id,
+                payload=payload,
+            )
+            # Fire-and-forget broadcast to all active operator dashboard WebSockets
+            asyncio.create_task(manager.broadcast_global(envelope))
+        except Exception as e:
+            logger.error(f"Error broadcasting event {event_type_str}: {e}")
+
+    return ConversationOrchestrator(
+        session_id=session.session_id,
+        call_id=session.call_id,
+        stt_provider=stt,
+        llm_provider=llm,
+        tts_provider=tts,
+        outbound_queue=session.outbound_queue,
+        event_broadcaster=broadcast_to_operator,
+    )
 
 
 class RealtimeSessionManager:
@@ -144,9 +215,9 @@ class RealtimeSessionManager:
         provider_call_id: str,
         caller_number: str,
         provider: str = "exotel",
+        attach_ai: bool = True,
     ) -> TelephonySession:
         async with self._lock:
-            # Idempotency check: if session already exists for this provider_call_id, return it
             if provider_call_id in self._provider_call_id_map:
                 existing_sid = self._provider_call_id_map[provider_call_id]
                 logger.info(
@@ -161,6 +232,12 @@ class RealtimeSessionManager:
                 caller_number=caller_number,
                 provider=provider,
             )
+
+            if attach_ai:
+                orchestrator = create_session_orchestrator(session)
+                session.orchestrator = orchestrator
+                await orchestrator.start()
+
             self._sessions[session_id] = session
             self._provider_call_id_map[provider_call_id] = session_id
             self._call_id_map[call_id] = session_id
@@ -196,6 +273,14 @@ class RealtimeSessionManager:
             session = self._sessions.get(session_id)
             if not session:
                 return None
+
+            # Stop conversation orchestrator cleanly
+            if session.orchestrator:
+                try:
+                    await session.orchestrator.stop()
+                except Exception as e:
+                    logger.error(f"Error stopping orchestrator for {session_id}: {e}")
+                session.orchestrator = None
 
             if session.state_machine.can_transition_to(CallState.ENDED):
                 session.state_machine.transition_to(CallState.ENDED, reason=reason)

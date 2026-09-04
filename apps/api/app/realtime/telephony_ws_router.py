@@ -97,14 +97,17 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
                     session.ingest_inbound_frame(audio_frame)
 
             elif event_type == ExotelMediaEvent.CLEAR.value:
-                # Barge-in / interruption: drain outbound queue
+                # Barge-in / interruption: cancel ongoing speech in orchestrator and drain queue
                 logger.info(f"Barge-in / clear event received for session {session_id}")
-                while not session.outbound_queue.empty():
-                    try:
-                        session.outbound_queue.get_nowait()
-                        session.outbound_queue.task_done()
-                    except (asyncio.QueueEmpty, ValueError):
-                        break
+                if session.orchestrator:
+                    session.orchestrator.interrupt(reason="exotel_clear_barge_in")
+                else:
+                    while not session.outbound_queue.empty():
+                        try:
+                            session.outbound_queue.get_nowait()
+                            session.outbound_queue.task_done()
+                        except (asyncio.QueueEmpty, ValueError):
+                            break
 
             elif event_type == ExotelMediaEvent.STOP.value:
                 logger.info(f"Stop event received from Exotel for session {session_id}")

@@ -1,0 +1,304 @@
+﻿import asyncio
+import logging
+import time
+import uuid
+from collections import deque
+from typing import Any, Callable, Deque, Dict, List, Optional
+
+from app.core.config import get_settings
+from app.realtime.audio_adapter import AudioStreamAdapter
+from app.schemas.conversation import (
+    ConversationalResponse,
+    ConversationState,
+    TranscriptEvent,
+    TurnLatency,
+    TurnSpeaker,
+    Utterance,
+)
+from app.schemas.languages import LanguageCode
+from app.schemas.telephony import AudioFrame
+
+logger = logging.getLogger("samved.conversation.orchestrator")
+
+
+class ConversationOrchestrator:
+    """Coordinates STT, Gemini reasoning, and Sarvam TTS synthesis for a voice call."""
+
+    def __init__(
+        self,
+        session_id: str,
+        call_id: str,
+        stt_provider: Any,
+        llm_provider: Any,
+        tts_provider: Any,
+        outbound_queue: asyncio.Queue,
+        event_broadcaster: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        max_context_utterances: int = 12,
+    ):
+        self.session_id = session_id
+        self.call_id = call_id
+        self.stt = stt_provider
+        self.llm = llm_provider
+        self.tts = tts_provider
+        self.outbound_queue = outbound_queue
+        self.broadcast = event_broadcaster or (lambda event_type, payload: None)
+
+        self.state = ConversationState.LISTENING
+        self.current_language = LanguageCode.TA  # Default to Tamil / multilingual auto-detect
+        self.utterances: Deque[Utterance] = deque(maxlen=max_context_utterances)
+
+        # Active turn & latency tracking
+        self.active_latency = TurnLatency()
+        self.last_completed_latency = TurnLatency()
+        self._current_speech_task: Optional[asyncio.Task] = None
+        self._worker_tasks: List[asyncio.Task] = []
+        self._is_running = False
+
+    def transition_state(self, new_state: ConversationState, reason: str = "") -> None:
+        old_state = self.state
+        self.state = new_state
+        logger.info(f"Session {self.session_id} state transition: {old_state} -> {new_state} ({reason})")
+        self.broadcast(
+            "CONVERSATION_STATE_CHANGED",
+            {
+                "session_id": self.session_id,
+                "call_id": self.call_id,
+                "old_state": old_state.value,
+                "new_state": new_state.value,
+                "reason": reason,
+            },
+        )
+
+    def on_inbound_audio_frame(self, frame: AudioFrame) -> None:
+        """Called for every 20ms inbound audio frame from telephony gateway."""
+        if not self._is_running:
+            return
+
+        raw_pcm = frame.get_raw_bytes()
+
+        # Barge-in / interruption detection:
+        # If SAMVED is currently SPEAKING and caller produces speech, interrupt!
+        if self.state == ConversationState.SPEAKING:
+            if AudioStreamAdapter.is_speech_active(raw_pcm, threshold_rms=350.0):
+                logger.info(f"Barge-in detected via voice activity for session {self.session_id}!")
+                self.interrupt(reason="caller_voice_barge_in")
+
+        # Asynchronously forward chunk to STT provider
+        asyncio.create_task(self.stt.send_audio_chunk(self.session_id, raw_pcm))
+
+    def interrupt(self, reason: str = "barge_in") -> None:
+        """Interrupts ongoing AI speech immediately, clears outbound buffer, and listens."""
+        if self._current_speech_task and not self._current_speech_task.done():
+            self._current_speech_task.cancel()
+            self._current_speech_task = None
+
+        # Drain outbound queue to stop audio playback on telephone line
+        while not self.outbound_queue.empty():
+            try:
+                self.outbound_queue.get_nowait()
+                self.outbound_queue.task_done()
+            except (asyncio.QueueEmpty, ValueError):
+                break
+
+        self.transition_state(ConversationState.INTERRUPTED, reason=reason)
+        self.broadcast(
+            "SPEECH_INTERRUPTED",
+            {"session_id": self.session_id, "call_id": self.call_id, "reason": reason},
+        )
+        # Immediately return to LISTENING
+        self.transition_state(ConversationState.LISTENING, reason="interruption_cleared")
+
+    async def handle_transcript_event(self, event: TranscriptEvent) -> None:
+        """Processes partial and final transcripts from STT."""
+        # 1. Check language detection / changes
+        new_lang = LanguageCode.from_str(event.language)
+        if new_lang != LanguageCode.UNKNOWN and new_lang != self.current_language:
+            old_lang = self.current_language
+            self.current_language = new_lang
+            self.broadcast(
+                "LANGUAGE_CHANGED",
+                {
+                    "session_id": self.session_id,
+                    "call_id": self.call_id,
+                    "old_language": old_lang.value,
+                    "new_language": new_lang.value,
+                },
+            )
+
+        # 2. Handle partial draft transcript
+        if not event.is_final:
+            if self.state == ConversationState.LISTENING:
+                self.transition_state(ConversationState.TRANSCRIBING, reason="partial_transcript")
+            self.broadcast(
+                "TRANSCRIPT_PARTIAL",
+                {
+                    "session_id": self.session_id,
+                    "call_id": self.call_id,
+                    "speaker": "caller",
+                    "text": event.text,
+                    "confidence": event.confidence,
+                    "language": self.current_language.value,
+                },
+            )
+            return
+
+        # 3. Handle final transcript (Turn boundary reached)
+        self.active_latency.caller_speech_ended_at = time.time()
+        self.active_latency.final_transcript_at = time.time()
+
+        utterance = Utterance(
+            speaker=TurnSpeaker.CALLER,
+            text=event.text,
+            language=self.current_language.value,
+            confidence=event.confidence,
+            is_final=True,
+        )
+        self.utterances.append(utterance)
+
+        self.broadcast(
+            "TRANSCRIPT_FINAL",
+            {
+                "session_id": self.session_id,
+                "call_id": self.call_id,
+                "speaker": "caller",
+                "text": event.text,
+                "confidence": event.confidence,
+                "language": self.current_language.value,
+            },
+        )
+
+        # If agent was speaking when final transcript landed, ensure interruption was performed
+        if self.state == ConversationState.SPEAKING:
+            self.interrupt(reason="final_transcript_barge_in")
+
+        # Launch reasoning & speech generation as a cancellable task
+        self._current_speech_task = asyncio.create_task(self._execute_ai_turn(utterance))
+
+    async def _execute_ai_turn(self, caller_utterance: Utterance) -> None:
+        """Executes LLM reasoning and TTS playback for an AI response turn."""
+        try:
+            self.transition_state(ConversationState.THINKING, reason="ai_reasoning_started")
+            self.broadcast(
+                "AI_THINKING",
+                {"session_id": self.session_id, "call_id": self.call_id, "prompt": caller_utterance.text},
+            )
+
+            # Build recent conversational message history
+            messages = [
+                {"role": "user" if u.speaker == TurnSpeaker.CALLER else "assistant", "content": u.text}
+                for u in self.utterances
+            ]
+
+            # 1. Call LLM (Gemini or Mock)
+            response: ConversationalResponse = await self.llm.generate_conversational_response(
+                messages=messages,
+                language=self.current_language.value,
+            )
+            self.active_latency.llm_response_at = time.time()
+
+            agent_utterance = Utterance(
+                speaker=TurnSpeaker.AGENT,
+                text=response.response_text,
+                language=response.language,
+                confidence=response.confidence,
+                is_final=True,
+            )
+            self.utterances.append(agent_utterance)
+
+            self.broadcast(
+                "AI_RESPONSE_STARTED",
+                {
+                    "session_id": self.session_id,
+                    "call_id": self.call_id,
+                    "speaker": "agent",
+                    "text": response.response_text,
+                    "intent": response.detected_intent,
+                    "safety_flag": response.safety_flag,
+                    "language": response.language,
+                },
+            )
+
+            # 2. Transition to SPEAKING and synthesize TTS
+            self.transition_state(ConversationState.SPEAKING, reason="tts_synthesis_started")
+            self.broadcast(
+                "TTS_STARTED",
+                {"session_id": self.session_id, "call_id": self.call_id, "text_length": len(response.response_text)},
+            )
+
+            pcm_audio = await self.tts.synthesize(
+                text=response.response_text,
+                language_code=response.language,
+            )
+
+            if pcm_audio:
+                self.active_latency.first_tts_frame_at = time.time()
+                # Slice into 320-byte (20ms) frames
+                frames = AudioStreamAdapter.slice_pcm_to_frames(pcm_audio)
+                for chunk in frames:
+                    # Cooperative check: if interrupted, break early
+                    if self.state != ConversationState.SPEAKING:
+                        logger.info(f"Playback aborted due to state change ({self.state})")
+                        break
+                    await self.outbound_queue.put(chunk)
+
+            self.broadcast("TTS_ENDED", {"session_id": self.session_id, "call_id": self.call_id})
+            self.broadcast(
+                "AI_RESPONSE_ENDED",
+                {
+                    "session_id": self.session_id,
+                    "call_id": self.call_id,
+                    "stt_latency_ms": self.active_latency.stt_latency_ms,
+                    "llm_latency_ms": self.active_latency.llm_latency_ms,
+                    "tts_latency_ms": self.active_latency.tts_latency_ms,
+                    "total_latency_ms": self.active_latency.total_turn_latency_ms,
+                },
+            )
+
+            # Save completed latency record
+            self.last_completed_latency = self.active_latency
+            self.active_latency = TurnLatency()
+
+            # Return to LISTENING for caller's next turn
+            self.transition_state(ConversationState.LISTENING, reason="turn_completed")
+
+        except asyncio.CancelledError:
+            logger.info(f"AI response turn cancelled for session {self.session_id}")
+            raise
+        except Exception as e:
+            logger.error(f"Error during AI turn for session {self.session_id}: {e}")
+            self.transition_state(ConversationState.ERROR, reason=str(e))
+            self.transition_state(ConversationState.LISTENING, reason="recovered_from_error")
+
+    async def start(self) -> None:
+        """Starts background STT receiver task."""
+        self._is_running = True
+        await self.stt.start_stream(self.session_id, language_code=self.current_language.value)
+
+        async def stt_listener():
+            try:
+                async for event in self.stt.receive_transcripts(self.session_id):
+                    if not self._is_running:
+                        break
+                    await self.handle_transcript_event(event)
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"Error in STT listener worker for {self.session_id}: {e}")
+
+        task = asyncio.create_task(stt_listener())
+        self._worker_tasks.append(task)
+        logger.info(f"Conversation orchestrator started for session {self.session_id}")
+
+    async def stop(self) -> None:
+        """Clean shutdown: cancels active tasks and closes STT streams."""
+        self._is_running = False
+        if self._current_speech_task and not self._current_speech_task.done():
+            self._current_speech_task.cancel()
+
+        for t in self._worker_tasks:
+            if not t.done():
+                t.cancel()
+
+        await self.stt.close_stream(self.session_id)
+        self.transition_state(ConversationState.ENDING, reason="session_stopped")
+        logger.info(f"Conversation orchestrator stopped for session {self.session_id}")

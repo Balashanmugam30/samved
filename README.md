@@ -220,14 +220,14 @@ pnpm dev:web
 
 ---
 
-## 12. Implementation Status (Phase 1)
+## 12. Implementation Status (Phase 2)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
 | **Repository Monorepo Foundation** | ✅ | Phase 0 |
 | **FastAPI Backend (`/health`, `/ready`, `/version`)** | ✅ | Phase 0 |
 | **Realtime WebSocket Gateway (`/ws`)** | ✅ | Phase 0 |
-| **Event Taxonomy (20 Events) & Envelopes (v1.0)** | ✅ | Phase 0 |
+| **Event Taxonomy & Envelopes (v1.0)** | ✅ | Phase 0 |
 | **Provider Abstraction Layer & Mocks** | ✅ | Phase 0 |
 | **Next.js Web Console & Operational Status Panel** | ✅ | Phase 0 |
 | **Playwright Browser Smoke Tests** | ✅ | Phase 0 |
@@ -239,9 +239,14 @@ pnpm dev:web
 | **Realtime Session Manager & Audio Framing (8kHz PCM)** | ✅ | Phase 1 |
 | **Telephony Simulator & Ingress Test Harness** | ✅ | Phase 1 |
 | **Telephony Diagnostics & Live Operator View (`/calls`)** | ✅ | Phase 1 |
-| **Live Exotel Call Verification** | ⚠️ External Credentials Pending | Phase 1 |
-| **Sarvam Realtime Multilingual STT & TTS** | ⏳ | Phase 2 |
-| **Gemini Grounded Dialogue Loop** | ⏳ | Phase 2 |
+| **Sarvam Realtime Streaming STT (`saaras:v3`)** | ✅ | Phase 2 |
+| **Gemini Conversational Intelligence (`gemini-2.5-flash`)** | ✅ | Phase 2 |
+| **Sarvam Bulbul TTS (`bulbul:v3`) & 8kHz WAV Stripping** | ✅ | Phase 2 |
+| **Turn Coordination & Orchestration State Machine** | ✅ | Phase 2 |
+| **Barge-In / Caller Interruption Engine** | ✅ | Phase 2 |
+| **Multilingual Voice Simulation Harness (Tamil/Hindi/English)** | ✅ | Phase 2 |
+| **Live Multi-Turn Transcript & Latency Console** | ✅ | Phase 2 |
+| **Live External Telephony / Cloud Provider Access** | ⚠️ Blocked by External Credentials | Phase 1 & 2 |
 | **Deterministic Safety Engine** | ⏳ | Phase 4 |
 | **Stress Vulnerability Index (SVI 0–100 Bands)** | ⏳ | Phase 5 |
 | **Acoustic Paralinguistic Feature Extraction** | ⏳ | Phase 6 |

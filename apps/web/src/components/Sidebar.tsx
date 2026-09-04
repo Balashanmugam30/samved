@@ -103,10 +103,10 @@ export const Sidebar: React.FC = () => {
       <div className="p-4 border-t border-slate-800 bg-slate-950 text-xs text-slate-400 space-y-2">
         <div className="flex items-center space-x-2">
           <LifeBuoy className="w-4 h-4 text-emerald-400" />
-          <span className="font-semibold text-slate-200">Phase 1 Telephony Active</span>
+          <span className="font-semibold text-slate-200">Phase 2 AI Voice Active</span>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-400">
-          Exotel streaming ingress, session manager, and 8kHz PCM gateway operational.
+          Sarvam STT, Gemini 2.5 Flash reasoning, and Sarvam Bulbul TTS real-time pipeline operational.
         </p>
       </div>
     </aside>

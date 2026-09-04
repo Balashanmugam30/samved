@@ -41,6 +41,19 @@ class ConnectionManager:
             for dead_ws in dead_connections:
                 self.disconnect(dead_ws, session_id)
 
+    async def broadcast_global(self, envelope: EventEnvelope) -> None:
+        """Broadcasts an event envelope to all connected operator WebSocket clients."""
+        text_data = envelope.model_dump_json()
+        dead_connections = []
+        for sid, conns in list(self.active_sessions.items()):
+            for ws in list(conns):
+                try:
+                    await ws.send_text(text_data)
+                except Exception:
+                    dead_connections.append((ws, sid))
+        for dead_ws, sid in dead_connections:
+            self.disconnect(dead_ws, sid)
+
     @property
     def total_active_connections(self) -> int:
         return sum(len(conns) for conns in self.active_sessions.values())

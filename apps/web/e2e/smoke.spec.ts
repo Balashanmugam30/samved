@@ -44,11 +44,11 @@ test.describe("SAMVED Web Console Smoke Tests", () => {
     // Navigate to Live Telephony
     await page.click("text=Live Telephony");
     await expect(page).toHaveURL(/.*\/calls/);
-    await expect(page.locator("text=Phase 1 Telephony Ingress Console")).toBeVisible();
-    await expect(page.locator("text=Synthetic Call Simulator & Ingress Harness")).toBeVisible();
+    await expect(page.locator("text=Phase 2 Multilingual AI Voice Conversation Console")).toBeVisible();
+    await expect(page.locator("text=Multilingual Voice Pipeline Simulator")).toBeVisible();
 
     // Verify simulation trigger button is present
-    const simButton = page.locator("text=Start Simulation Call");
+    const simButton = page.getByRole("button", { name: "Run Voice Simulation" });
     await expect(simButton).toBeVisible();
 
     // Navigate to Safety Alerts

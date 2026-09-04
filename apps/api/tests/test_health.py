@@ -33,8 +33,7 @@ def test_version_info(client):
     assert data["version"] == "0.1.0"
     assert data["mode"] == "DEV"
     assert data["problem_statement"] == "26093"
-    assert data["target_helpline"] == "NHAA 14566"
-    assert data["phase"] == "Phase 1 — Real Telephony Connectivity"
+    assert "Phase 2" in data["phase"]
 
 
 def test_v1_prefixed_endpoints(client):

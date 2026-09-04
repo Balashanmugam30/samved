@@ -117,6 +117,9 @@ class TelephonySessionInfo(BaseModel):
     inbound_bytes_count: int = 0
     sequence_gaps_count: int = 0
     dropped_frames_count: int = 0
+    conversation_state: Optional[str] = None
+    current_language: Optional[str] = None
+    utterances_count: int = 0
     is_active: bool = True
 
 

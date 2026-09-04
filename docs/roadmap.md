@@ -4,8 +4,8 @@
 | :---: | :--- | :--- | :---: |
 | **0** | **Engineering Foundation** | Monorepo layout, Next.js web shell, FastAPI backend, Event contracts (v1.0), Provider abstractions, Test suite, Playwright validation, CI/CD, and Git setup. | **COMPLETE** |
 | **1** | **Telephony & Media Ingress** | Exotel bidirectional audio streaming integration (8kHz PCM) over WebSockets, call state machine, session manager, and diagnostic simulator. | **COMPLETE** |
-| **2** | **Multilingual Speech & Reasoning** | Sarvam real-time STT, Google Gemini conversational intelligence, Sarvam Bulbul TTS voice synthesis pipeline. | ⏳ Next |
-| **3** | **Live Transcripts & Event Streaming** | Streaming transcript broadcast to operator console, low-latency partial updates, barge-in detection. | ⏳ Scheduled |
+| **2** | **Multilingual Speech & Reasoning** | Sarvam real-time STT (`saaras:v3`), Google Gemini (`gemini-2.5-flash`) conversational intelligence, Sarvam Bulbul TTS (`bulbul:v3`) voice synthesis pipeline, barge-in interruption. | **COMPLETE** |
+| **3** | **Live Transcripts & Event Streaming** | Advanced streaming transcript broadcast to operator console, low-latency partial updates, and acoustic feature streaming. | ⏳ Next |
 | **4** | **Deterministic Safety Engine** | High-priority safety rules, immediate physical threat detection, self-harm keywords, supervisor alert dispatch. | ⏳ Scheduled |
 | **5** | **Stress Vulnerability Index (SVI)** | Explainable 0–100 vulnerability index scoring engine with 4 calibrated prototype bands and contributing factor breakdown. | ⏳ Scheduled |
 | **6** | **Acoustic Signal Processing** | Non-verbal paralinguistic feature extraction (pitch, jitter, shimmer, speaking rate, silence ratio) as supporting triage evidence. | ⏳ Scheduled |

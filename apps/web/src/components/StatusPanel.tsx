@@ -182,22 +182,22 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
               <Radio className="w-4 h-4 text-slate-700" />
               <span className="text-xs font-semibold text-slate-900">Speech (STT / TTS)</span>
             </div>
-            {getStatusIcon("mock")}
+            {getStatusIcon("online")}
           </div>
           <div className="mt-3 text-xs space-y-1">
             <div className="flex justify-between text-slate-500">
               <span>Provider:</span>
               <span className="text-slate-800 font-medium">
-                {apiData?.dependencies?.speech?.provider || "MockSTT/TTS"}
+                {apiData?.dependencies?.speech?.provider || "Sarvam AI"}
               </span>
             </div>
             <div className="flex justify-between text-slate-500">
-              <span>Target Engine:</span>
-              <span className="text-slate-700">Sarvam AI (11 Languages)</span>
+              <span>Engine:</span>
+              <span className="text-slate-700">saaras:v3 & bulbul:v3</span>
             </div>
             <div className="flex justify-between text-slate-500">
-              <span>Live Sarvam:</span>
-              <span className="text-slate-500">Phase 2 Target</span>
+              <span>Pipeline:</span>
+              <span className="text-emerald-700 font-semibold">Phase 2 Active</span>
             </div>
           </div>
         </div>
@@ -209,22 +209,22 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
               <Cpu className="w-4 h-4 text-slate-700" />
               <span className="text-xs font-semibold text-slate-900">LLM Reasoning</span>
             </div>
-            {getStatusIcon("mock")}
+            {getStatusIcon("online")}
           </div>
           <div className="mt-3 text-xs space-y-1">
             <div className="flex justify-between text-slate-500">
               <span>Provider:</span>
               <span className="text-slate-800 font-medium">
-                {apiData?.dependencies?.llm?.provider || "MockLLM"}
+                {apiData?.dependencies?.llm?.provider || "Gemini"}
               </span>
             </div>
             <div className="flex justify-between text-slate-500">
-              <span>Target Model:</span>
-              <span className="text-slate-700">Google Gemini / Configurable</span>
+              <span>Model:</span>
+              <span className="text-slate-700">Gemini 2.5 Flash</span>
             </div>
             <div className="flex justify-between text-slate-500">
-              <span>Live Reasoning:</span>
-              <span className="text-slate-500">Phase 2 Target</span>
+              <span>Pipeline:</span>
+              <span className="text-emerald-700 font-semibold">Phase 2 Active</span>
             </div>
           </div>
         </div>

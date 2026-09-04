@@ -135,25 +135,53 @@ async def exotel_status_callback(request: Request):
 
 @telephony_router.get("/doctor", status_code=status.HTTP_200_OK)
 async def telephony_doctor() -> Dict[str, Any]:
-    """Safe diagnostic mechanism inspecting telephony readiness without leaking secrets."""
+    """Safe diagnostic mechanism inspecting telephony, STT, LLM, and TTS readiness without leaking secrets."""
     is_live = settings.is_live()
-    has_creds = settings.has_exotel_credentials()
-    is_enabled = settings.EXOTEL_ENABLED
+    has_exotel = settings.has_exotel_credentials()
+    has_sarvam = bool(settings.SARVAM_API_KEY and len(settings.SARVAM_API_KEY.strip()) > 8)
+    has_gemini = bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY.strip()) > 8)
     is_public = not ("localhost" in settings.PUBLIC_BASE_URL or "127.0.0.1" in settings.PUBLIC_BASE_URL)
+
+    live_ready = is_live and has_exotel and has_sarvam and has_gemini and is_public
+    simulation_ready = True  # Mock providers are always available
 
     return {
         "app_mode": settings.APP_MODE,
         "telephony_provider": "Exotel",
-        "exotel_credentials_present": has_creds,
-        "exotel_enabled": is_enabled,
-        "live_mode_safe_to_start": is_live and has_creds and is_enabled and is_public,
-        "public_webhook_base_url": settings.PUBLIC_BASE_URL,
-        "public_ws_base_url": settings.PUBLIC_WS_BASE_URL,
+        "exotel_credentials_present": has_exotel,
+        "live_mode_safe_to_start": live_ready,
+        "public_webhook_base_url": settings.EXOTEL_WEBHOOK_BASE_URL or f"{settings.PUBLIC_BASE_URL}/v1/telephony",
+        "public_ws_base_url": settings.EXOTEL_STREAM_URL or f"{settings.PUBLIC_WS_BASE_URL}/v1/telephony/stream",
+        "providers": {
+            "telephony_exotel": "configured" if has_exotel else "not_configured",
+            "speech_sarvam_stt": "configured" if has_sarvam else "not_configured",
+            "speech_sarvam_tts": "configured" if has_sarvam else "not_configured",
+            "reasoning_gemini": "configured" if has_gemini else "not_configured",
+        },
+        "pipeline_status": {
+            "simulation_pipeline": "READY",
+            "live_voice_pipeline": "READY" if live_ready else "BLOCKED_BY_CREDENTIALS",
+        },
         "public_url_configured": is_public,
-        "signature_verification_enabled": settings.EXOTEL_VERIFY_SIGNATURE,
         "active_calls_count": telephony_session_manager.active_calls_count,
-        "note": "Exotel webhooks require public HTTPS/WSS reachable endpoints during LIVE calls."
+        "note": "In DEV/SIMULATION mode, deterministic mocks execute the complete voice pipeline without paid API keys.",
     }
+
+
+@telephony_router.post("/simulate/conversation", status_code=status.HTTP_201_CREATED)
+async def start_simulated_conversation_endpoint(payload: Optional[Dict[str, Any]] = None):
+    """Triggers an end-to-end multi-turn simulated AI voice conversation with STT, Gemini, and TTS."""
+    from app.realtime.simulation import run_simulated_conversation
+
+    data = payload or {}
+    scenario = data.get("scenario", "tamil_help")
+    caller_phone = data.get("caller_phone", "+919876543210")
+
+    result = await run_simulated_conversation(
+        scenario_key=scenario,
+        caller_number=caller_phone,
+    )
+    return result
 
 
 @telephony_router.get("/sessions", response_model=List[TelephonySessionInfo])

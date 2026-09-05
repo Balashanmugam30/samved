@@ -203,8 +203,9 @@ pnpm dev:web
 
 | Task | Command | Description |
 | :--- | :--- | :--- |
-| **Backend Tests** | `uv --directory apps/api run pytest -v` | Runs 217 unit, integration, safety, SVI, acoustic, adaptive, operator, orchestration, and knowledge RAG tests |
+| **Backend Tests** | `uv --directory apps/api run pytest -v` | Runs 253 unit, integration, safety, SVI, acoustic, adaptive, operator, orchestration, knowledge RAG, and case intelligence tests |
 | **Contract Flow Test** | `uv --directory apps/api run pytest tests/test_contract_flow.py -v` | Validates end-to-end event schema transport |
+| **Case Intelligence Tests**| `uv --directory apps/api run pytest tests/test_case_*.py -v` | Validates entity extraction, relationships, candidates, SHA-256 provenance, temporal logic, and security |
 | **Knowledge RAG Tests**| `uv --directory apps/api run pytest tests/test_knowledge_*.py -v` | Validates governed retrieval, versioning, chunking, citations, conflicts, and SSRF defenses |
 | **Operator Tests** | `uv --directory apps/api run pytest tests/test_operator_*.py -v` | Validates workstation actions, handoff lifecycle, notes with citations, and audit logging |
 | **Safety Tests** | `uv --directory apps/api run pytest tests/test_safety_*.py -v` | Validates deterministic safety engine rules and concurrency |
@@ -213,7 +214,7 @@ pnpm dev:web
 | **Adaptive Tests** | `uv --directory apps/api run pytest tests/test_adaptive_*.py -v` | Validates deterministic conversational policy and overrides |
 | **Frontend Type Check** | `pnpm type-check` | Type-checks all TypeScript packages & web app |
 | **Frontend Build** | `pnpm build` | Compiles production Next.js web application |
-| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 84 browser E2E tests (Desktop + Mobile Chrome across all phases) |
+| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 104 browser E2E tests (Desktop + Mobile Chrome across all 11 phases) |
 | **Telephony Diagnostics** | `curl http://localhost:8000/v1/telephony/doctor` | Safe credential and public ingress check without secrets |
 | **Docker Compose** | `docker compose up -d` | Starts PostgreSQL, Redis, API, and Web containers |
 
@@ -221,13 +222,14 @@ pnpm dev:web
 
 ## 11. Safety, Ethics & Data Limitations
 1. **Deterministic Safeguards**: Critical safety triggers (self-harm, ongoing violence) are governed by auditable rules. LLMs do not have unilateral escalation authority.
-2. **Human Oversight**: Tele-counselors maintain real-time supervision and can override any AI recommendation.
-3. **Data Limitations**: Benchmark and public datasets used during development are for technical evaluation only; they do not represent clinical ground truth.
-4. **Confidentiality**: Caller phone numbers are masked (`+91******3210`), raw audio is ephemeral, and secrets are strictly excluded from source control.
+2. **Epistemic Boundaries**: The Case Intelligence graph models reported dialogue and evidence, **not** objective truth, guilt, or legal culpability. Punitive/criminal labels are rejected or normalized to `REPORTED_ACTOR` with `claim_status = REPORTED`.
+3. **Human Oversight**: Tele-counselors maintain real-time supervision, can override any AI recommendation, and must confirm candidate relationships before graduation to active graph edges.
+4. **Data Limitations**: Benchmark and public datasets used during development are for technical evaluation only; they do not represent clinical ground truth.
+5. **Confidentiality & Provenance**: Caller phone numbers are masked (`+91******3210`), raw audio is ephemeral, secrets are strictly excluded from source control, and all case entities are cryptographically anchored by SHA-256 evidence hashes.
 
 ---
 
-## 12. Implementation Status (Phase 10 Complete)
+## 12. Implementation Status (Phase 11 Complete)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -288,7 +290,14 @@ pnpm dev:web
 | **Prompt Injection Delimiters (`<retrieved_source_data>`) & SSRF Defense** | ✅ | Phase 10 |
 | **Operator Knowledge Support Panel, Conflict/Stale Banners & Note Ref** | ✅ | Phase 10 |
 | **Knowledge REST APIs (`/v1/knowledge/...`) & Audit Trail** | ✅ | Phase 10 |
-| **Longitudinal Case Intelligence** | ⏳ | Phase 11 |
+| **Case Intelligence & Knowledge Graph Subsystem** | ✅ | Phase 11 |
+| **Explainable Entity/Relationship Layer & Role Normalization** | ✅ | Phase 11 |
+| **Cryptographic Provenance Anchors (SHA-256 Verbatim Excerpt Hashes)** | ✅ | Phase 11 |
+| **Bitemporal Validity Intervals & Non-Destructive Supersession** | ✅ | Phase 11 |
+| **Human Tele-Counselor Candidate Confirmation/Rejection Guard** | ✅ | Phase 11 |
+| **Operator Case Intelligence Panel, Graph Visualizer & Inspectors** | ✅ | Phase 11 |
+| **Case Graph REST APIs (`/v1/cases/...`) & Immutable Mutation Audit** | ✅ | Phase 11 |
+| **Follow-up & Care Continuity** | ⏳ | Phase 12 |
 
 ---
 

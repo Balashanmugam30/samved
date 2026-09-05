@@ -13,8 +13,8 @@
 | **8** | **Human Operator Console & Workstation** | Full-fledged tele-counselor workstation with human takeover, pause/resume, safety checks, multi-stage handoff, structured notes, unified call triage summary, and audit timeline. | **COMPLETE** |
 | **9** | **Multi-Agent Orchestration** | Bounded specialized AI workers (Safety, Acoustic, Language, Context, Briefing, Support stub) with deterministic DAG coordination, latency budgeting, and operator briefings. | **COMPLETE** |
 | **10** | **Grounded Legal & Scheme RAG** | Official gazette RAG (NDPS Act, Mental Healthcare Act, MoSJE NAPDDR IRCA database) with strict citation verification, multi-version temporal governance, conflict detection, and prompt injection defense. | **COMPLETE** |
-| **11** | **Case Intelligence & History** | Longitudinal anonymous case timelines, intake records, referral recommendations, and multi-session tracking. | ⏳ Next |
-| **12** | **Follow-up & Care Continuity** | Automated check-in cadences, appointment reminders, and counselor follow-up task queues. | ⏳ Scheduled |
+| **11** | **Case Intelligence & Knowledge Graph** | Human-supervised explainable entity/relationship layer, evidence-linked provenance (SHA-256), temporal validity intervals, candidate confirmation workflow, and operator graph visualizer. | **COMPLETE** |
+| **12** | **Follow-up & Care Continuity** | Automated check-in cadences, appointment reminders, and counselor follow-up task queues. | ⏳ Next |
 | **13** | **Operational Helpline Analytics** | Aggregated call volumes, SVI severity heatmaps, geographic clustering, and administrative reports for MoSJE. | ⏳ Scheduled |
 | **14** | **Scenario Simulation Engine** | Automated synthetic scenario benchmark suite, WER evaluation, high-risk recall verification, and operator training sandbox. | ⏳ Scheduled |
 | **15** | **Security & Privacy Hardening** | PII redaction pipeline (Presidio/IndicNER), cryptographic consent logs, role-based access control, and immutable audit trails. | ⏳ Scheduled |

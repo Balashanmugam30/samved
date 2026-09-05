@@ -1,6 +1,7 @@
 """Specialized AI Worker Agents for SAMVED Phase 9."""
 
 from app.orchestration.workers.acoustic_context import AcousticContextAgent
+from app.orchestration.workers.case_graph_extraction import CaseGraphExtractionAgent
 from app.orchestration.workers.conversation_context import ConversationContextAgent
 from app.orchestration.workers.knowledge_retrieval import KnowledgeRetrievalAgent
 from app.orchestration.workers.language_context import LanguageContextAgent
@@ -16,5 +17,6 @@ __all__ = [
     "OperatorBriefingAgent",
     "SupportOptionsAgent",
     "KnowledgeRetrievalAgent",
+    "CaseGraphExtractionAgent",
 ]
 

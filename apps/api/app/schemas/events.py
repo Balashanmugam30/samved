@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -81,8 +81,19 @@ class EventType(str, Enum):
     KNOWLEDGE_REVIEW_RECOMMENDED = "KNOWLEDGE_REVIEW_RECOMMENDED"
     KNOWLEDGE_ANSWER_BLOCKED = "KNOWLEDGE_ANSWER_BLOCKED"
 
-    # Case & follow-up
+    # Case Intelligence & Knowledge Graph (Phase 11)
     CASE_CREATED = "CASE_CREATED"
+    CASE_UPDATED = "CASE_UPDATED"
+    CASE_CALL_LINKED = "CASE_CALL_LINKED"
+    CASE_CALL_UNLINKED = "CASE_CALL_UNLINKED"
+    CASE_ENTITY_CREATED = "CASE_ENTITY_CREATED"
+    CASE_ENTITY_UPDATED = "CASE_ENTITY_UPDATED"
+    CASE_ENTITY_CANDIDATE_CREATED = "CASE_ENTITY_CANDIDATE_CREATED"
+    CASE_RELATIONSHIP_CREATED = "CASE_RELATIONSHIP_CREATED"
+    CASE_RELATIONSHIP_CONFIRMED = "CASE_RELATIONSHIP_CONFIRMED"
+    CASE_RELATIONSHIP_REJECTED = "CASE_RELATIONSHIP_REJECTED"
+    CASE_RELATIONSHIP_SUPERSEDED = "CASE_RELATIONSHIP_SUPERSEDED"
+    CASE_NOTE_LINKED = "CASE_NOTE_LINKED"
     FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED"
 
     # Heartbeat
@@ -439,6 +450,181 @@ class KnowledgeResultPayload(BaseModel):
     executed_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+
+
+# ==========================================
+# Phase 11: Case Intelligence & Knowledge Graph Contracts
+# ==========================================
+
+class CaseStatus(str, Enum):
+    OPEN = "OPEN"
+    ACTIVE = "ACTIVE"
+    INTAKE = "INTAKE"
+    TRIAGED = "TRIAGED"
+    ESCALATED = "ESCALATED"
+    ON_HOLD = "ON_HOLD"
+    FOLLOW_UP_PENDING = "FOLLOW_UP_PENDING"
+    RESOLVED = "RESOLVED"
+    CLOSED = "CLOSED"
+    ARCHIVED = "ARCHIVED"
+    UNKNOWN = "UNKNOWN"
+
+
+class EntityType(str, Enum):
+    CASE = "CASE"
+    CALL = "CALL"
+    PERSON = "PERSON"
+    OPERATOR = "OPERATOR"
+    ORGANIZATION = "ORGANIZATION"
+    SERVICE = "SERVICE"
+    LOCATION = "LOCATION"
+    EVENT = "EVENT"
+    DOCUMENT = "DOCUMENT"
+    KNOWLEDGE_SOURCE = "KNOWLEDGE_SOURCE"
+    NOTE = "NOTE"
+    INTERVENTION = "INTERVENTION"
+    CONTACT_POINT = "CONTACT_POINT"
+
+
+class PersonRole(str, Enum):
+    CALLER = "CALLER"
+    HOUSEHOLD_MEMBER = "HOUSEHOLD_MEMBER"
+    CONTACT = "CONTACT"
+    SUPPORT_PERSON = "SUPPORT_PERSON"
+    REPORTED_ACTOR = "REPORTED_ACTOR"
+    SERVICE_PROVIDER = "SERVICE_PROVIDER"
+    OPERATOR = "OPERATOR"
+    UNKNOWN_PERSON = "UNKNOWN_PERSON"
+
+
+class ClaimStatus(str, Enum):
+    REPORTED = "REPORTED"
+    OBSERVED = "OBSERVED"
+    VERIFIED = "VERIFIED"
+    INFERRED = "INFERRED"
+    UNKNOWN = "UNKNOWN"
+    DISPUTED = "DISPUTED"
+
+
+class RelationshipType(str, Enum):
+    REPORTED_BY = "REPORTED_BY"
+    MENTIONED_IN = "MENTIONED_IN"
+    CONNECTED_TO = "CONNECTED_TO"
+    LOCATED_AT = "LOCATED_AT"
+    LIVES_AT = "LIVES_AT"
+    WORKS_AT = "WORKS_AT"
+    SUPPORTS = "SUPPORTS"
+    REFERRED_TO = "REFERRED_TO"
+    CONTACTED = "CONTACTED"
+    CALLED = "CALLED"
+    PART_OF_CASE = "PART_OF_CASE"
+    DESCRIBES = "DESCRIBES"
+    DOCUMENTED_BY = "DOCUMENTED_BY"
+    CITED_BY = "CITED_BY"
+    OCCURRED_AT = "OCCURRED_AT"
+    INVOLVES = "INVOLVES"
+
+
+class CaseEvidenceLinkPayload(BaseModel):
+    link_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    source_type: str = "CALL_TRANSCRIPT"
+    source_id: str
+    turn_index: Optional[int] = None
+    verbatim_excerpt: Optional[str] = None
+    citation_ref: Optional[str] = None
+    content_hash: Optional[str] = None
+    confidence: float = 1.0
+
+
+class CaseGraphNodePayload(BaseModel):
+    entity_id: str
+    case_id: str
+    type: EntityType
+    role: Optional[Union[PersonRole, str]] = None
+    label: str
+    claim_status: ClaimStatus = ClaimStatus.REPORTED
+    confidence: float = 1.0
+    source_refs: List[str] = Field(default_factory=list)
+    evidence: List[CaseEvidenceLinkPayload] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    first_seen: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    last_seen: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class CaseGraphEdgePayload(BaseModel):
+    edge_id: str
+    case_id: str
+    source_entity: str
+    relationship_type: RelationshipType
+    target_entity: str
+    claim_status: ClaimStatus = ClaimStatus.REPORTED
+    confidence: float = 1.0
+    source_refs: List[str] = Field(default_factory=list)
+    evidence: List[CaseEvidenceLinkPayload] = Field(default_factory=list)
+    valid_from: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    valid_to: Optional[str] = None
+    observed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    superseded_at: Optional[str] = None
+    superseded_by: Optional[str] = None
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class CaseCandidatePayload(BaseModel):
+    candidate_id: str
+    case_id: str
+    source_entity: str
+    source_label: str
+    relationship_type: RelationshipType
+    target_entity: str
+    target_label: str
+    confidence: float = 1.0
+    evidence_excerpt: str
+    source_turn: Optional[str] = None
+    status: str = "PENDING"
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class CaseTimelineItemPayload(BaseModel):
+    event_id: str
+    case_id: str
+    event_type: str
+    title: str
+    summary: str
+    severity: Optional[str] = None
+    actor_id: Optional[str] = None
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    evidence_refs: List[str] = Field(default_factory=list)
+    claim_status: ClaimStatus = ClaimStatus.REPORTED
+
+
+class CaseSummaryPayload(BaseModel):
+    case_id: str
+    case_number: str
+    status: CaseStatus
+    created_at: str
+    updated_at: str
+    primary_language: str = "en-IN"
+    linked_calls_count: int = 0
+    linked_calls: List[str] = Field(default_factory=list)
+    entities_count: int = 0
+    relationships_count: int = 0
+    events_count: int = 0
+    pending_candidates_count: int = 0
+    svi_score: Optional[int] = None
+    svi_band: Optional[str] = None
+    safety_state: Optional[str] = None
+
+
+class CaseGraphPayload(BaseModel):
+    case_id: str
+    nodes: List[CaseGraphNodePayload] = Field(default_factory=list)
+    edges: List[CaseGraphEdgePayload] = Field(default_factory=list)
+    candidates: List[CaseCandidatePayload] = Field(default_factory=list)
+    total_nodes: int = 0
+    total_edges: int = 0
+
 
 
 

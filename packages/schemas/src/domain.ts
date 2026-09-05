@@ -26,11 +26,17 @@ export interface Role {
 }
 
 export enum CaseStatus {
+  OPEN = "OPEN",
+  ACTIVE = "ACTIVE",
   INTAKE = "INTAKE",
   TRIAGED = "TRIAGED",
   ESCALATED = "ESCALATED",
+  ON_HOLD = "ON_HOLD",
   FOLLOW_UP_PENDING = "FOLLOW_UP_PENDING",
-  CLOSED = "CLOSED"
+  RESOLVED = "RESOLVED",
+  CLOSED = "CLOSED",
+  ARCHIVED = "ARCHIVED",
+  UNKNOWN = "UNKNOWN"
 }
 
 export interface Case {

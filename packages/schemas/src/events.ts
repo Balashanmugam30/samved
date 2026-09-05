@@ -3,6 +3,8 @@
  * Canonical event definitions for Realtime WebSocket and internal streaming.
  */
 
+import { CaseStatus } from "./domain";
+
 export const SCHEMA_VERSION = "1.0";
 
 export enum EventType {
@@ -81,8 +83,19 @@ export enum EventType {
   KNOWLEDGE_REVIEW_RECOMMENDED = "KNOWLEDGE_REVIEW_RECOMMENDED",
   KNOWLEDGE_ANSWER_BLOCKED = "KNOWLEDGE_ANSWER_BLOCKED",
 
-  // Case & follow-up
+  // Case Intelligence & Knowledge Graph (Phase 11)
   CASE_CREATED = "CASE_CREATED",
+  CASE_UPDATED = "CASE_UPDATED",
+  CASE_CALL_LINKED = "CASE_CALL_LINKED",
+  CASE_CALL_UNLINKED = "CASE_CALL_UNLINKED",
+  CASE_ENTITY_CREATED = "CASE_ENTITY_CREATED",
+  CASE_ENTITY_UPDATED = "CASE_ENTITY_UPDATED",
+  CASE_ENTITY_CANDIDATE_CREATED = "CASE_ENTITY_CANDIDATE_CREATED",
+  CASE_RELATIONSHIP_CREATED = "CASE_RELATIONSHIP_CREATED",
+  CASE_RELATIONSHIP_CONFIRMED = "CASE_RELATIONSHIP_CONFIRMED",
+  CASE_RELATIONSHIP_REJECTED = "CASE_RELATIONSHIP_REJECTED",
+  CASE_RELATIONSHIP_SUPERSEDED = "CASE_RELATIONSHIP_SUPERSEDED",
+  CASE_NOTE_LINKED = "CASE_NOTE_LINKED",
   FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED",
 
   // Heartbeat / ping-pong
@@ -480,4 +493,167 @@ export interface KnowledgeResultPayload {
   search_latency_ms: number;
   executed_at: string;
 }
+
+// ==========================================
+// Phase 11: Case Intelligence & Knowledge Graph Contracts
+// ==========================================
+
+
+
+export enum EntityType {
+  CASE = "CASE",
+  CALL = "CALL",
+  PERSON = "PERSON",
+  OPERATOR = "OPERATOR",
+  ORGANIZATION = "ORGANIZATION",
+  SERVICE = "SERVICE",
+  LOCATION = "LOCATION",
+  EVENT = "EVENT",
+  DOCUMENT = "DOCUMENT",
+  KNOWLEDGE_SOURCE = "KNOWLEDGE_SOURCE",
+  NOTE = "NOTE",
+  INTERVENTION = "INTERVENTION",
+  CONTACT_POINT = "CONTACT_POINT"
+}
+
+export enum PersonRole {
+  CALLER = "CALLER",
+  HOUSEHOLD_MEMBER = "HOUSEHOLD_MEMBER",
+  CONTACT = "CONTACT",
+  SUPPORT_PERSON = "SUPPORT_PERSON",
+  REPORTED_ACTOR = "REPORTED_ACTOR",
+  SERVICE_PROVIDER = "SERVICE_PROVIDER",
+  OPERATOR = "OPERATOR",
+  UNKNOWN_PERSON = "UNKNOWN_PERSON"
+}
+
+export enum ClaimStatus {
+  REPORTED = "REPORTED",
+  OBSERVED = "OBSERVED",
+  VERIFIED = "VERIFIED",
+  INFERRED = "INFERRED",
+  UNKNOWN = "UNKNOWN",
+  DISPUTED = "DISPUTED"
+}
+
+export enum RelationshipType {
+  REPORTED_BY = "REPORTED_BY",
+  MENTIONED_IN = "MENTIONED_IN",
+  CONNECTED_TO = "CONNECTED_TO",
+  LOCATED_AT = "LOCATED_AT",
+  LIVES_AT = "LIVES_AT",
+  WORKS_AT = "WORKS_AT",
+  SUPPORTS = "SUPPORTS",
+  REFERRED_TO = "REFERRED_TO",
+  CONTACTED = "CONTACTED",
+  CALLED = "CALLED",
+  PART_OF_CASE = "PART_OF_CASE",
+  DESCRIBES = "DESCRIBES",
+  DOCUMENTED_BY = "DOCUMENTED_BY",
+  CITED_BY = "CITED_BY",
+  OCCURRED_AT = "OCCURRED_AT",
+  INVOLVES = "INVOLVES"
+}
+
+export interface CaseEvidenceLinkPayload {
+  link_id: string;
+  source_type: "CALL_TRANSCRIPT" | "KNOWLEDGE_CITATION" | "OPERATOR_NOTE" | "SAFETY_SIGNAL" | "SYSTEM_EVENT";
+  source_id: string;
+  turn_index?: number;
+  verbatim_excerpt?: string;
+  citation_ref?: string;
+  content_hash?: string;
+  confidence: number;
+}
+
+export interface CaseGraphNodePayload {
+  entity_id: string;
+  case_id: string;
+  type: EntityType;
+  role?: PersonRole | string;
+  label: string;
+  claim_status: ClaimStatus;
+  confidence: number;
+  source_refs: string[];
+  evidence?: CaseEvidenceLinkPayload[];
+  metadata?: Record<string, unknown>;
+  first_seen: string;
+  last_seen: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CaseGraphEdgePayload {
+  edge_id: string;
+  case_id: string;
+  source_entity: string;
+  relationship_type: RelationshipType;
+  target_entity: string;
+  claim_status: ClaimStatus;
+  confidence: number;
+  source_refs: string[];
+  evidence?: CaseEvidenceLinkPayload[];
+  valid_from: string;
+  valid_to?: string | null;
+  observed_at: string;
+  superseded_at?: string | null;
+  superseded_by?: string | null;
+  created_at: string;
+}
+
+export interface CaseCandidatePayload {
+  candidate_id: string;
+  case_id: string;
+  source_entity: string;
+  source_label: string;
+  relationship_type: RelationshipType;
+  target_entity: string;
+  target_label: string;
+  confidence: number;
+  evidence_excerpt: string;
+  source_turn?: string;
+  status: "PENDING" | "CONFIRMED" | "REJECTED";
+  created_at: string;
+}
+
+export interface CaseTimelineItemPayload {
+  event_id: string;
+  case_id: string;
+  event_type: string;
+  title: string;
+  summary: string;
+  severity?: string;
+  actor_id?: string;
+  timestamp: string;
+  evidence_refs: string[];
+  claim_status: ClaimStatus;
+}
+
+export interface CaseSummaryPayload {
+  case_id: string;
+  case_number: string;
+  status: CaseStatus;
+  created_at: string;
+  updated_at: string;
+  primary_language: string;
+  linked_calls_count: number;
+  linked_calls: string[];
+  entities_count: number;
+  relationships_count: number;
+  events_count: number;
+  pending_candidates_count: number;
+  svi_score?: number | null;
+  svi_band?: string | null;
+  safety_state?: string;
+}
+
+export interface CaseGraphPayload {
+  case_id: string;
+  nodes: CaseGraphNodePayload[];
+  edges: CaseGraphEdgePayload[];
+  candidates: CaseCandidatePayload[];
+  total_nodes: number;
+  total_edges: number;
+}
+
 

@@ -272,4 +272,46 @@ curl http://localhost:8000/v1/knowledge/citations/CITATION_ID
 6. Inspect **Event Timeline**:
    - Click `KNOWLEDGE` filter pill to isolate `KNOWLEDGE_SEARCH_STARTED` and completion events.
 
+---
+
+## 8. Verifying Phase 11 Case Intelligence & Knowledge Graph
+
+### 8.1 Subsystem Health & Fixture Verification
+```bash
+# Verify Case Intelligence subsystem status
+curl http://localhost:8000/v1/cases/status
+
+# Get details of active case
+curl http://localhost:8000/v1/cases/case-1001
+
+# Inspect graph structure with configurable depth
+curl "http://localhost:8000/v1/cases/case-1001/graph?depth=2&include_candidates=true"
+
+# Verify cryptographic graph integrity
+curl http://localhost:8000/v1/cases/case-1001/integrity
+```
+
+### 8.2 Workstation Case Intelligence Panel UI Testing
+1. Navigate to `http://localhost:3000/calls` and select active call `call-1001` (or `call-op-test-01`).
+2. Inspect the **Case Intelligence Panel** (`data-testid="case-intelligence-panel"`):
+   - Verify Case ID header (`case-1001`), call ID, status badge (`OPEN`), and epistemic disclaimer badges.
+   - Inspect the **Metrics Strip** (`data-testid="case-metrics-strip"`): entities count, active relationships count, pending candidates count.
+3. Inspect the **Interactive Graph Visualizer** (`data-testid="case-graph-visualizer"`):
+   - View entity nodes (`data-testid="entity-node-..."`) with role chips and canonical labels.
+   - View directed relationship edges (`data-testid="graph-edge-..."`).
+   - Click an entity node to open the **Node Inspector drawer** (`data-testid="node-inspector"`): inspect metadata, claim status, and SHA-256 evidence anchor.
+   - Click a relationship edge to open the **Edge Inspector drawer** (`data-testid="edge-inspector"`): inspect relationship type, confidence, and temporal validity.
+4. Test **Candidate Relationship Confirmation**:
+   - Locate candidate relationship cards (`data-testid="candidate-card-..."`).
+   - Review verbatim excerpt grounding.
+   - Click **Confirm** (`data-testid="confirm-cand-..."`): candidate graduates to active edge, metrics increment, and event logs to timeline.
+   - Click **Reject** (`data-testid="reject-cand-..."`): candidate is dismissed with reason recorded in audit log.
+5. Inspect **Depth Traversal Selector**:
+   - Select 1, 2, 3, or 4 hops (`data-testid="graph-depth-select"`) to traverse subgraphs dynamically.
+6. Inspect **Immutable Case Audit Trail**:
+   - Click **Audit Trail** (`data-testid="view-case-audit-button"`) to open `data-testid="case-audit-modal"`.
+7. Inspect **Event Timeline**:
+   - Click `CASE` filter pill (`data-testid="event-filter-CASE"`) to isolate `CASE_ENTITY_EXTRACTED`, `CASE_RELATIONSHIP_CREATED`, and `CASE_CANDIDATE_CONFIRMED` events.
+
+
 

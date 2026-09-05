@@ -7,6 +7,7 @@ from app.orchestration.contracts import BaseAgentWorker
 from app.orchestration.models import AgentSafetyClassification, AgentSpec
 from app.orchestration.workers import (
     AcousticContextAgent,
+    CaseGraphExtractionAgent,
     ConversationContextAgent,
     KnowledgeRetrievalAgent,
     LanguageContextAgent,
@@ -27,7 +28,7 @@ class AgentRegistry:
             self._register_default_workers()
 
     def _register_default_workers(self) -> None:
-        """Register the built-in Phase 9 and Phase 10 worker agents."""
+        """Register the built-in Phase 9, Phase 10, and Phase 11 worker agents."""
         defaults = [
             SafetyContextAgent(),
             AcousticContextAgent(),
@@ -35,6 +36,7 @@ class AgentRegistry:
             ConversationContextAgent(),
             SupportOptionsAgent(),
             KnowledgeRetrievalAgent(),
+            CaseGraphExtractionAgent(),
             OperatorBriefingAgent(),
         ]
         for worker in defaults:

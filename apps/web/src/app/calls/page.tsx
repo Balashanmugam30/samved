@@ -192,7 +192,8 @@ type EventFilterCategory =
   | "ACOUSTIC"
   | "ADAPTIVE"
   | "ORCHESTRATION"
-  | "KNOWLEDGE";
+  | "KNOWLEDGE"
+  | "CASE";
 
 
 export default function OperatorCallsPage() {
@@ -248,6 +249,19 @@ export default function OperatorCallsPage() {
   const [isSearchingKnowledge, setIsSearchingKnowledge] = useState<boolean>(false);
   const [knowledgeResult, setKnowledgeResult] = useState<any | null>(null);
   const [selectedSourceDetail, setSelectedSourceDetail] = useState<any | null>(null);
+
+  // Phase 11: Case Intelligence & Knowledge Graph State
+  const [caseRecord, setCaseRecord] = useState<any | null>(null);
+  const [caseGraph, setCaseGraph] = useState<any | null>(null);
+  const [caseIntegrity, setCaseIntegrity] = useState<any | null>(null);
+  const [selectedGraphNode, setSelectedGraphNode] = useState<any | null>(null);
+  const [selectedGraphEdge, setSelectedGraphEdge] = useState<any | null>(null);
+  const [isRefreshingCase, setIsRefreshingCase] = useState<boolean>(false);
+  const [caseDepth, setCaseDepth] = useState<number>(2);
+  const [caseFocusEntity, setCaseFocusEntity] = useState<string>("");
+  const [candidateActionLoading, setCandidateActionLoading] = useState<string | null>(null);
+  const [showCaseAuditModal, setShowCaseAuditModal] = useState<boolean>(false);
+  const [caseAuditLogs, setCaseAuditLogs] = useState<any[]>([]);
 
 
   // Selected Call Data
@@ -870,6 +884,25 @@ export default function OperatorCallsPage() {
         case "KNOWLEDGE_REVIEW_RECOMMENDED" as any:
         case EventType.KNOWLEDGE_REVIEW_RECOMMENDED:
           break;
+
+        case "CASE_CREATED" as any:
+        case "CASE_UPDATED" as any:
+        case "CASE_CALL_LINKED" as any:
+        case "CASE_CALL_UNLINKED" as any:
+        case "CASE_ENTITY_CREATED" as any:
+        case "CASE_ENTITY_UPDATED" as any:
+        case "CASE_ENTITY_CANDIDATE_CREATED" as any:
+        case "CASE_RELATIONSHIP_CREATED" as any:
+        case "CASE_RELATIONSHIP_CONFIRMED" as any:
+        case "CASE_RELATIONSHIP_REJECTED" as any:
+        case "CASE_RELATIONSHIP_SUPERSEDED" as any:
+          if (caseRecord?.case_id) {
+            fetchCaseGraph(caseRecord.case_id);
+            fetchCaseIntegrity(caseRecord.case_id);
+          } else if (payload?.case_id) {
+            fetchCaseForCall(payload.case_id);
+          }
+          break;
       }
     },
   });
@@ -907,6 +940,7 @@ export default function OperatorCallsPage() {
   useEffect(() => {
     fetchCalls();
     fetchSafetyStatus();
+    fetchCaseForCall();
     const interval = setInterval(() => {
       fetchCalls();
       fetchSafetyStatus();
@@ -923,6 +957,7 @@ export default function OperatorCallsPage() {
     setKnowledgeStatus("READY");
     setKnowledgeQuery("");
     subscribeCall(callId);
+    fetchCaseForCall(callId);
 
 
     // Fetch call details, transcripts, and safety state via REST snapshot
@@ -1418,6 +1453,113 @@ export default function OperatorCallsPage() {
     }
   };
 
+  // Phase 11: Case Intelligence Handlers
+  const fetchCaseGraph = async (caseId: string, depth = caseDepth, focus = caseFocusEntity) => {
+    try {
+      setIsRefreshingCase(true);
+      const url = new URL(`${apiUrl}/v1/cases/${caseId}/graph`);
+      url.searchParams.set("depth", String(depth));
+      if (focus && focus.trim()) url.searchParams.set("focus", focus.trim());
+      const res = await fetch(url.toString());
+      if (res.ok) {
+        const data = await res.json();
+        setCaseGraph(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch case graph:", err);
+    } finally {
+      setIsRefreshingCase(false);
+    }
+  };
+
+  const fetchCaseIntegrity = async (caseId: string) => {
+    try {
+      const res = await fetch(`${apiUrl}/v1/cases/${caseId}/integrity`);
+      if (res.ok) {
+        const data = await res.json();
+        setCaseIntegrity(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch case integrity:", err);
+    }
+  };
+
+  const fetchCaseForCall = async (callIdOrCaseId?: string) => {
+    try {
+      let res;
+      if (callIdOrCaseId && callIdOrCaseId.startsWith("case-")) {
+        res = await fetch(`${apiUrl}/v1/cases/${callIdOrCaseId}`);
+      } else if (callIdOrCaseId) {
+        res = await fetch(`${apiUrl}/v1/cases/by-call/${callIdOrCaseId}`);
+      }
+      if (!res || !res.ok) {
+        res = await fetch(`${apiUrl}/v1/cases/case-1001`);
+      }
+      if (res.ok) {
+        const cData = await res.json();
+        setCaseRecord(cData);
+        await fetchCaseGraph(cData.case_id);
+        await fetchCaseIntegrity(cData.case_id);
+      }
+    } catch (e) {
+      console.error("Failed to load case data:", e);
+    }
+  };
+
+  const handleConfirmCandidate = async (candidateId: string) => {
+    if (!caseRecord?.case_id) return;
+    try {
+      setCandidateActionLoading(candidateId);
+      const res = await fetch(`${apiUrl}/v1/cases/${caseRecord.case_id}/candidates/${candidateId}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator_id: "operator_1" }),
+      });
+      if (res.ok) {
+        await fetchCaseGraph(caseRecord.case_id);
+        await fetchCaseIntegrity(caseRecord.case_id);
+      }
+    } catch (err) {
+      console.error("Failed to confirm candidate:", err);
+    } finally {
+      setCandidateActionLoading(null);
+    }
+  };
+
+  const handleRejectCandidate = async (candidateId: string) => {
+    if (!caseRecord?.case_id) return;
+    try {
+      setCandidateActionLoading(candidateId);
+      const res = await fetch(`${apiUrl}/v1/cases/${caseRecord.case_id}/candidates/${candidateId}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator_id: "operator_1", reason: "Rejected by tele-counselor" }),
+      });
+      if (res.ok) {
+        await fetchCaseGraph(caseRecord.case_id);
+        await fetchCaseIntegrity(caseRecord.case_id);
+      }
+    } catch (err) {
+      console.error("Failed to reject candidate:", err);
+    } finally {
+      setCandidateActionLoading(null);
+    }
+  };
+
+  const handleViewCaseAudit = async () => {
+    if (!caseRecord?.case_id) return;
+    try {
+      const res = await fetch(`${apiUrl}/v1/cases/${caseRecord.case_id}/audit?limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        setCaseAuditLogs(data);
+        setShowCaseAuditModal(true);
+      }
+    } catch (err) {
+      console.error("Failed to load case audit:", err);
+    }
+  };
+
 
   const handleEndCall = async () => {
     if (!selectedCallId) return;
@@ -1633,6 +1775,9 @@ export default function OperatorCallsPage() {
       }
       if (eventFilter === "KNOWLEDGE") {
         return type.includes("KNOWLEDGE");
+      }
+      if (eventFilter === "CASE") {
+        return type.includes("CASE");
       }
       return true;
     });
@@ -3561,6 +3706,458 @@ export default function OperatorCallsPage() {
                 </div>
               </div>
 
+              {/* Phase 11: Case Intelligence & Knowledge Graph Layer */}
+              <div
+                data-testid="case-intelligence-panel"
+                className="mx-5 mt-3 p-4 rounded-xl bg-gradient-to-br from-slate-900/90 to-violet-950/20 border border-violet-800/40 shadow"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-violet-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-violet-200">
+                      Case Intelligence &amp; Knowledge Graph
+                    </span>
+                    <span
+                      data-testid="case-number-badge"
+                      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-violet-950/80 text-violet-300 border border-violet-700/50"
+                    >
+                      {caseRecord?.case_number || "CAS-2026-001001"}
+                    </span>
+                    <span
+                      data-testid="case-status-badge"
+                      className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                    >
+                      {caseRecord?.status || "ACTIVE"}
+                    </span>
+                    <span
+                      data-testid="case-epistemic-mode"
+                      className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-slate-800 text-slate-300 border border-slate-700"
+                    >
+                      HUMAN_SUPERVISED
+                    </span>
+                    {caseIntegrity && (
+                      <span
+                        data-testid="case-integrity-badge"
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
+                          caseIntegrity.valid
+                            ? "bg-emerald-950/50 text-emerald-400 border border-emerald-800"
+                            : "bg-rose-950/50 text-rose-400 border border-rose-800"
+                        }`}
+                      >
+                        {caseIntegrity.valid ? "INTEGRITY: VALID" : "ANOMALY DETECTED"}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      data-testid="view-case-audit-btn"
+                      onClick={handleViewCaseAudit}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] text-slate-300 flex items-center gap-1 transition-colors"
+                    >
+                      <Clock className="h-3 w-3" />
+                      Audit Trail
+                    </button>
+                    <button
+                      data-testid="refresh-case-btn"
+                      onClick={() => {
+                        if (caseRecord?.case_id) {
+                          fetchCaseGraph(caseRecord.case_id);
+                          fetchCaseIntegrity(caseRecord.case_id);
+                        } else {
+                          fetchCaseForCall();
+                        }
+                      }}
+                      disabled={isRefreshingCase}
+                      className="px-2 py-1 rounded bg-violet-950/60 hover:bg-violet-900/60 border border-violet-700/50 text-[10px] text-violet-300 flex items-center gap-1 disabled:opacity-50 transition-colors"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${isRefreshingCase ? "animate-spin" : ""}`} />
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+
+                {/* Case Metadata & Subgraph Controls */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3 text-xs bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400">Linked Call</span>
+                    <span className="font-mono text-slate-200 truncate">
+                      {selectedCallId || caseRecord?.linked_calls?.[0] || "call-fixture-01"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400">Assigned Operator</span>
+                    <span className="text-slate-200">
+                      {caseRecord?.assigned_operator_id || "operator"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400">Primary Language</span>
+                    <span className="text-slate-200">
+                      {caseRecord?.primary_language || "en-IN"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 justify-end">
+                    <span className="text-[10px] text-slate-400">Graph Depth:</span>
+                    <select
+                      data-testid="case-depth-select"
+                      value={caseDepth}
+                      onChange={(e) => {
+                        const d = parseInt(e.target.value, 10);
+                        setCaseDepth(d);
+                        if (caseRecord?.case_id) fetchCaseGraph(caseRecord.case_id, d);
+                      }}
+                      className="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-slate-200"
+                    >
+                      <option value={1}>1 Hop</option>
+                      <option value={2}>2 Hops</option>
+                      <option value={3}>3 Hops</option>
+                      <option value={4}>4 Hops (Max)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Metrics Summary Strip */}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="p-2 rounded bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">Entities</span>
+                    <span data-testid="case-entities-count" className="font-mono font-bold text-sm text-blue-300">
+                      {caseGraph?.total_nodes ?? caseGraph?.nodes?.length ?? 3}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">Relationships</span>
+                    <span data-testid="case-edges-count" className="font-mono font-bold text-sm text-violet-300">
+                      {caseGraph?.total_edges ?? caseGraph?.edges?.length ?? 2}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">Pending Candidates</span>
+                    <span data-testid="case-candidates-count" className="font-mono font-bold text-sm text-amber-300">
+                      {caseGraph?.candidates?.filter((c: any) => c.status === "PENDING")?.length ?? 1}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Candidate Confirmations Section (Human-Supervised Ambiguity Resolution) */}
+                {caseGraph?.candidates && caseGraph.candidates.filter((c: any) => c.status === "PENDING").length > 0 && (
+                  <div data-testid="candidate-confirmations-section" className="mb-3 p-3 rounded-lg bg-amber-950/20 border border-amber-800/40">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5 text-amber-300 text-xs font-bold uppercase tracking-wider">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <span>Candidate Relationships Requiring Counselor Review</span>
+                      </div>
+                      <span className="text-[10px] text-amber-400/80 italic">Graduation requires human confirmation</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {caseGraph.candidates
+                        .filter((c: any) => c.status === "PENDING")
+                        .map((cand: any) => (
+                          <div
+                            key={cand.candidate_id}
+                            data-testid="candidate-card"
+                            className="p-2.5 rounded bg-slate-950/90 border border-amber-700/40 text-xs flex flex-col md:flex-row md:items-center justify-between gap-2"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-slate-200">{cand.source_label}</span>
+                                <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-700/50">
+                                  {cand.relationship_type}
+                                </span>
+                                <span className="font-semibold text-slate-200">{cand.target_label}</span>
+                                <span className="text-[9px] text-slate-400 font-mono">
+                                  ({Math.round(cand.confidence * 100)}% conf)
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-300 italic">
+                                &ldquo;{cand.evidence_excerpt}&rdquo;
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                data-testid="confirm-candidate-btn"
+                                onClick={() => handleConfirmCandidate(cand.candidate_id)}
+                                disabled={candidateActionLoading === cand.candidate_id}
+                                className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold flex items-center gap-1 transition-colors disabled:opacity-50 shadow-sm"
+                              >
+                                <Check className="h-3 w-3" />
+                                Confirm
+                              </button>
+                              <button
+                                data-testid="reject-candidate-btn"
+                                onClick={() => handleRejectCandidate(cand.candidate_id)}
+                                disabled={candidateActionLoading === cand.candidate_id}
+                                className="px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-200 border border-rose-700/50 text-[11px] font-semibold flex items-center gap-1 transition-colors disabled:opacity-50"
+                              >
+                                <X className="h-3 w-3" />
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Graph Visualizer (Nodes & Relationships View) */}
+                <div data-testid="case-graph-visualizer" className="space-y-3">
+                  {/* Entity Nodes List */}
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
+                      <span>Case Entities ({caseGraph?.nodes?.length || 0})</span>
+                      <span className="text-slate-500 font-normal">Click node to inspect evidence</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {(caseGraph?.nodes || []).map((node: any) => {
+                        const isSelected = selectedGraphNode?.entity_id === node.entity_id;
+                        const isPerson = node.type === "PERSON";
+                        const isLoc = node.type === "LOCATION";
+                        const isOrg = node.type === "ORGANIZATION";
+                        const isDoc = node.type === "DOCUMENT";
+
+                        return (
+                          <div
+                            key={node.entity_id}
+                            data-testid="case-graph-node"
+                            onClick={() => {
+                              setSelectedGraphNode(node);
+                              setSelectedGraphEdge(null);
+                            }}
+                            className={`p-2 rounded-lg cursor-pointer transition-all border text-xs ${
+                              isSelected
+                                ? "bg-violet-950/60 border-violet-400 shadow-md scale-[1.02]"
+                                : isPerson
+                                ? "bg-slate-950/80 border-blue-800/40 hover:border-blue-500/60"
+                                : isLoc
+                                ? "bg-slate-950/80 border-amber-800/40 hover:border-amber-500/60"
+                                : isOrg
+                                ? "bg-slate-950/80 border-emerald-800/40 hover:border-emerald-500/60"
+                                : isDoc
+                                ? "bg-slate-950/80 border-purple-800/40 hover:border-purple-500/60"
+                                : "bg-slate-950/80 border-slate-800 hover:border-slate-700"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                                {node.type}
+                              </span>
+                              <span className={`text-[9px] font-mono font-bold uppercase ${
+                                node.claim_status === "VERIFIED" ? "text-emerald-400" : "text-amber-400"
+                              }`}>
+                                {node.claim_status}
+                              </span>
+                            </div>
+                            <div className="font-semibold text-slate-100 truncate">{node.label}</div>
+                            {node.role && (
+                              <div className="text-[10px] text-slate-400 truncate">Role: {node.role}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Active Relationship Edges List */}
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
+                      <span>Active Directed Relationships ({caseGraph?.edges?.length || 0})</span>
+                      <span className="text-slate-500 font-normal">Click edge to inspect temporal validity</span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {(caseGraph?.edges || []).map((edge: any) => {
+                        const isSelected = selectedGraphEdge?.edge_id === edge.edge_id;
+                        const sourceLabel = caseGraph?.nodes?.find((n: any) => n.entity_id === edge.source_entity)?.label || edge.source_entity;
+                        const targetLabel = caseGraph?.nodes?.find((n: any) => n.entity_id === edge.target_entity)?.label || edge.target_entity;
+
+                        return (
+                          <div
+                            key={edge.edge_id}
+                            data-testid="case-graph-edge"
+                            onClick={() => {
+                              setSelectedGraphEdge(edge);
+                              setSelectedGraphNode(null);
+                            }}
+                            className={`p-2 rounded bg-slate-950/80 border cursor-pointer text-xs flex items-center justify-between transition-all ${
+                              isSelected
+                                ? "border-violet-400 bg-violet-950/40 shadow-sm"
+                                : "border-slate-800 hover:border-slate-700"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 font-mono text-[11px]">
+                              <span className="font-sans font-semibold text-slate-200">{sourceLabel}</span>
+                              <span className="text-slate-500">&mdash;&gt;</span>
+                              <span className="px-1.5 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800/60 font-bold">
+                                {edge.relationship_type}
+                              </span>
+                              <span className="text-slate-500">&mdash;&gt;</span>
+                              <span className="font-sans font-semibold text-slate-200">{targetLabel}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-[10px]">
+                              <span className="text-slate-400 font-mono">
+                                {edge.superseded_at ? "SUPERSEDED" : "ACTIVE"}
+                              </span>
+                              <span className="font-mono text-slate-400">
+                                {edge.valid_from ? edge.valid_from.slice(0, 10) : ""}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Node & Edge Inspector Drawer */}
+                {(selectedGraphNode || selectedGraphEdge) && (
+                  <div
+                    data-testid="case-inspector-drawer"
+                    className="mt-3 p-3 rounded-lg bg-slate-950 border border-slate-700 text-xs space-y-2"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                      <span className="font-bold text-slate-200">
+                        {selectedGraphNode ? `Entity Inspector: ${selectedGraphNode.label}` : `Relationship Inspector: ${selectedGraphEdge.relationship_type}`}
+                      </span>
+                      <button
+                        data-testid="close-inspector-btn"
+                        onClick={() => {
+                          setSelectedGraphNode(null);
+                          setSelectedGraphEdge(null);
+                        }}
+                        className="text-slate-400 hover:text-slate-200 text-xs"
+                      >
+                        ✕ Close
+                      </button>
+                    </div>
+
+                    {selectedGraphNode && (
+                      <div data-testid="case-node-inspector" className="text-[11px] text-slate-300 space-y-1.5">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div><strong className="text-slate-400">Entity ID:</strong> {selectedGraphNode.entity_id}</div>
+                          <div><strong className="text-slate-400">Type:</strong> {selectedGraphNode.type}</div>
+                          <div><strong className="text-slate-400">Role:</strong> {selectedGraphNode.role || "N/A"}</div>
+                          <div><strong className="text-slate-400">Claim Status:</strong> {selectedGraphNode.claim_status}</div>
+                        </div>
+
+                        {selectedGraphNode.evidence && selectedGraphNode.evidence.length > 0 && (
+                          <div className="mt-2 pt-1 border-t border-slate-800">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Evidence Anchors:</span>
+                            {selectedGraphNode.evidence.map((ev: any, idx: number) => (
+                              <div key={idx} className="mt-1 p-2 rounded bg-slate-900 border border-slate-800">
+                                <div className="text-slate-200 italic">&ldquo;{ev.verbatim_excerpt}&rdquo;</div>
+                                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                                  <span>Source: {ev.source_type} ({ev.source_id})</span>
+                                  {ev.content_hash && (
+                                    <span className="font-mono text-[9px] text-emerald-400">
+                                      SHA-256: {ev.content_hash.slice(0, 16)}...
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {selectedGraphEdge && (
+                      <div data-testid="case-edge-inspector" className="text-[11px] text-slate-300 space-y-1.5">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div><strong className="text-slate-400">Edge ID:</strong> {selectedGraphEdge.edge_id}</div>
+                          <div><strong className="text-slate-400">Type:</strong> {selectedGraphEdge.relationship_type}</div>
+                          <div><strong className="text-slate-400">Status:</strong> {selectedGraphEdge.claim_status}</div>
+                          <div><strong className="text-slate-400">Valid From:</strong> {selectedGraphEdge.valid_from}</div>
+                        </div>
+
+                        {selectedGraphEdge.superseded_at && (
+                          <div className="p-1.5 rounded bg-amber-950/30 text-amber-300 border border-amber-800/40 text-[10px]">
+                            Superseded at {selectedGraphEdge.superseded_at} by {selectedGraphEdge.superseded_by}. Historical record preserved.
+                          </div>
+                        )}
+
+                        {selectedGraphEdge.evidence && selectedGraphEdge.evidence.length > 0 && (
+                          <div className="mt-2 pt-1 border-t border-slate-800">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Evidence Link:</span>
+                            {selectedGraphEdge.evidence.map((ev: any, idx: number) => (
+                              <div key={idx} className="mt-1 p-2 rounded bg-slate-900 border border-slate-800">
+                                <div className="text-slate-200 italic">&ldquo;{ev.verbatim_excerpt}&rdquo;</div>
+                                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                                  <span>Source: {ev.source_id}</span>
+                                  {ev.content_hash && (
+                                    <span className="font-mono text-[9px] text-emerald-400">
+                                      SHA-256: {ev.content_hash.slice(0, 16)}...
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Epistemic Safety Boundary Disclaimer */}
+                <div
+                  data-testid="case-safety-disclaimer"
+                  className="mt-2 text-[10px] text-slate-500 italic text-center border-t border-slate-800/80 pt-1.5"
+                >
+                  Case knowledge graph reflects reported facts and verified evidence within this case boundary. No inferences of guilt or criminal determinations are made.
+                </div>
+              </div>
+
+              {/* Case Audit Modal */}
+              {showCaseAuditModal && (
+                <div
+                  data-testid="case-audit-modal"
+                  className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+                >
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
+                    <div className="flex items-center justify-between p-4 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-5 w-5 text-violet-400" />
+                        <h3 className="font-bold text-slate-100">Case Audit Log &amp; Mutation History</h3>
+                      </div>
+                      <button
+                        onClick={() => setShowCaseAuditModal(false)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                      {caseAuditLogs.length === 0 ? (
+                        <p className="text-center py-8 text-xs text-slate-500">No audit records found for this case.</p>
+                      ) : (
+                        caseAuditLogs.map((entry: any) => (
+                          <div key={entry.entry_id} className="p-2.5 rounded bg-slate-950 border border-slate-800 text-xs">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-mono font-bold text-violet-300">{entry.action}</span>
+                              <span className="text-[10px] text-slate-500 font-mono">{entry.timestamp}</span>
+                            </div>
+                            <div className="text-slate-300">
+                              Actor: <span className="font-semibold text-slate-200">{entry.actor_id}</span>
+                            </div>
+                            {entry.details && Object.keys(entry.details).length > 0 && (
+                              <pre className="mt-1 p-1.5 rounded bg-slate-900 text-[10px] font-mono text-slate-400 overflow-x-auto">
+                                {JSON.stringify(entry.details, null, 2)}
+                              </pre>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Live Transcript Chronological Stream */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {transcripts.length === 0 && !partialDraft ? (
@@ -3685,7 +4282,7 @@ export default function OperatorCallsPage() {
 
             {/* Filter Pills */}
             <div className="flex flex-wrap gap-1">
-              {(["ALL", "OPERATOR", "SAFETY", "SVI", "ACOUSTIC", "ADAPTIVE", "ORCHESTRATION", "KNOWLEDGE", "TRANSCRIPT", "CONVERSATION", "ERRORS", "LATENCY"] as EventFilterCategory[]).map(
+              {(["ALL", "OPERATOR", "SAFETY", "SVI", "ACOUSTIC", "ADAPTIVE", "ORCHESTRATION", "KNOWLEDGE", "CASE", "TRANSCRIPT", "CONVERSATION", "ERRORS", "LATENCY"] as EventFilterCategory[]).map(
                 (f) => (
                   <button
                     key={f}
@@ -3716,6 +4313,7 @@ export default function OperatorCallsPage() {
                 const isLatency = type.includes("LATENCY");
                 const isOrch = type.includes("ORCHESTRATION") || type.includes("AGENT_") || type.includes("BRIEFING");
                 const isKnowledge = type.includes("KNOWLEDGE");
+                const isCase = type.includes("CASE");
 
                 return (
                   <div
@@ -3732,6 +4330,8 @@ export default function OperatorCallsPage() {
                         ? "bg-teal-950/20 border-teal-800/50"
                         : isKnowledge
                         ? "bg-amber-950/20 border-amber-800/50"
+                        : isCase
+                        ? "bg-violet-950/30 border-violet-700/60"
                         : "bg-slate-900 border-slate-800"
                     }`}
                   >
@@ -3748,6 +4348,8 @@ export default function OperatorCallsPage() {
                             ? "text-teal-400"
                             : isKnowledge
                             ? "text-amber-400"
+                            : isCase
+                            ? "text-violet-300"
                             : "text-indigo-400"
                         }`}
                       >

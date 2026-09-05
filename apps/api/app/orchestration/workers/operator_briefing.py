@@ -96,6 +96,16 @@ class OperatorBriefingAgent(BaseAgentWorker):
                     sec = top_cit.get("section_page", "Guidance")
                     key_facts.append(f"Authoritative Policy [{doc_title} - {sec}] cited.")
 
+        # Case Intelligence Integration (Phase 11)
+        case_data = ctx.get("case_info") or ctx.get("case_graph_extraction_agent") or {}
+        if isinstance(case_data, dict):
+            num_entities = case_data.get("total_entities_extracted", 0)
+            num_candidates = case_data.get("total_candidates_proposed", 0)
+            if num_entities > 0 or num_candidates > 0:
+                key_facts.append(
+                    f"Case Intelligence: {num_entities} entities extracted, {num_candidates} relationships pending confirmation."
+                )
+
         # Evidence references
         evidence_refs: List[str] = [f"turn:{request.turn_id}"]
         if triggered_rules:
@@ -104,6 +114,8 @@ class OperatorBriefingAgent(BaseAgentWorker):
             evidence_refs.append("acoustic:biomarkers")
         if isinstance(knowledge_data, dict) and knowledge_data.get("citations"):
             evidence_refs.append("knowledge:citations")
+        if isinstance(case_data, dict) and case_data.get("case_id"):
+            evidence_refs.append(f"case:{case_data['case_id']}")
 
         result: Dict[str, Any] = {
             "safety_summary": safety_summary,

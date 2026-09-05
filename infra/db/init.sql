@@ -305,6 +305,122 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_documents_status ON knowledge_documents
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc_id ON knowledge_chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_retrieval_call_id ON knowledge_retrieval_events(call_id);
 
+-- 11. Case Intelligence & Knowledge Graph (Phase 11)
+CREATE TABLE IF NOT EXISTS case_calls (
+    id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    call_id VARCHAR(36) NOT NULL REFERENCES calls(id),
+    linked_by VARCHAR(50) DEFAULT 'operator',
+    is_primary BOOLEAN DEFAULT FALSE,
+    linked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    unlinked_at TIMESTAMPTZ,
+    UNIQUE(case_id, call_id)
+);
+
+CREATE TABLE IF NOT EXISTS case_entities (
+    entity_id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    entity_type VARCHAR(50) NOT NULL,
+    role VARCHAR(50),
+    label VARCHAR(255) NOT NULL,
+    claim_status VARCHAR(30) NOT NULL DEFAULT 'REPORTED',
+    confidence FLOAT NOT NULL DEFAULT 1.0,
+    source_refs JSONB DEFAULT '[]'::jsonb,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    first_seen TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS case_relationships (
+    edge_id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    source_entity VARCHAR(64) NOT NULL REFERENCES case_entities(entity_id),
+    relationship_type VARCHAR(50) NOT NULL,
+    target_entity VARCHAR(64) NOT NULL REFERENCES case_entities(entity_id),
+    claim_status VARCHAR(30) NOT NULL DEFAULT 'REPORTED',
+    confidence FLOAT NOT NULL DEFAULT 1.0,
+    source_refs JSONB DEFAULT '[]'::jsonb,
+    valid_from TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    valid_to TIMESTAMPTZ,
+    observed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    superseded_at TIMESTAMPTZ,
+    superseded_by VARCHAR(64),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS case_events (
+    event_id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    event_type VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    summary TEXT NOT NULL,
+    severity VARCHAR(30),
+    actor_id VARCHAR(50),
+    source_type VARCHAR(50) DEFAULT 'SYSTEM',
+    evidence_refs JSONB DEFAULT '[]'::jsonb,
+    claim_status VARCHAR(30) NOT NULL DEFAULT 'REPORTED',
+    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS case_evidence_links (
+    link_id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    entity_id VARCHAR(64) REFERENCES case_entities(entity_id),
+    edge_id VARCHAR(64) REFERENCES case_relationships(edge_id),
+    source_type VARCHAR(50) NOT NULL,
+    source_id VARCHAR(100) NOT NULL,
+    turn_index INT,
+    verbatim_excerpt TEXT,
+    citation_ref VARCHAR(255),
+    content_hash VARCHAR(64),
+    confidence FLOAT DEFAULT 1.0,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS case_entity_candidates (
+    candidate_id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    source_entity VARCHAR(64) NOT NULL,
+    source_label VARCHAR(255) NOT NULL,
+    relationship_type VARCHAR(50) NOT NULL,
+    target_entity VARCHAR(64) NOT NULL,
+    target_label VARCHAR(255) NOT NULL,
+    confidence FLOAT DEFAULT 1.0,
+    evidence_excerpt TEXT NOT NULL,
+    source_turn VARCHAR(100),
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+    confirmed_by VARCHAR(50),
+    confirmed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS case_merge_operations (
+    operation_id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    operation_type VARCHAR(50) NOT NULL,
+    actor_id VARCHAR(50) NOT NULL,
+    primary_entity_id VARCHAR(64) NOT NULL,
+    secondary_entity_id VARCHAR(64) NOT NULL,
+    reason TEXT NOT NULL,
+    details JSONB DEFAULT '{}'::jsonb,
+    executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_case_calls_case_id ON case_calls(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_calls_call_id ON case_calls(call_id);
+CREATE INDEX IF NOT EXISTS idx_case_entities_case_id ON case_entities(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_entities_type ON case_entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_case_relationships_case_id ON case_relationships(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_relationships_source ON case_relationships(source_entity);
+CREATE INDEX IF NOT EXISTS idx_case_relationships_target ON case_relationships(target_entity);
+CREATE INDEX IF NOT EXISTS idx_case_events_case_id ON case_events(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_events_time ON case_events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_case_evidence_case_id ON case_evidence_links(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_candidates_case_id ON case_entity_candidates(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_candidates_status ON case_entity_candidates(status);
+
 -- Seed baseline roles
 INSERT INTO roles (id, name, permissions) VALUES
     ('role-admin', 'ADMIN', '["*"]'::jsonb),

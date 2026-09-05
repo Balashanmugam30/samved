@@ -516,12 +516,89 @@ CREATE INDEX IF NOT EXISTS idx_followups_priority ON followups(priority);
 CREATE INDEX IF NOT EXISTS idx_followup_attempts_followup_id ON followup_attempts(followup_id);
 CREATE INDEX IF NOT EXISTS idx_followup_events_followup_id ON followup_events(followup_id);
 
+-- 10. District Intelligence & Operational Analytics (Phase 13)
+CREATE TABLE IF NOT EXISTS analytics_metric_definitions (
+    metric_id VARCHAR(64) PRIMARY KEY,
+    metric_version VARCHAR(20) NOT NULL DEFAULT 'v1.0.0',
+    name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    definition TEXT NOT NULL,
+    calculation_method TEXT NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'OBSERVED',
+    privacy_level VARCHAR(30) NOT NULL DEFAULT 'AGGREGATE',
+    source_event_types JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS analytics_district_summaries (
+    summary_id VARCHAR(64) PRIMARY KEY,
+    district_code VARCHAR(30) NOT NULL,
+    district_name VARCHAR(100) NOT NULL,
+    state_code VARCHAR(10) NOT NULL,
+    state_name VARCHAR(100) NOT NULL,
+    period VARCHAR(20) NOT NULL,
+    period_start TIMESTAMPTZ NOT NULL,
+    period_end TIMESTAMPTZ NOT NULL,
+    timezone VARCHAR(50) DEFAULT 'Asia/Kolkata',
+    metrics_json JSONB NOT NULL,
+    privacy_status VARCHAR(30) NOT NULL DEFAULT 'PASS',
+    data_quality_status VARCHAR(30) NOT NULL DEFAULT 'HEALTHY',
+    metric_version VARCHAR(20) DEFAULT 'v1.0.0',
+    computed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS analytics_metric_values (
+    value_id VARCHAR(64) PRIMARY KEY,
+    metric_id VARCHAR(64) NOT NULL REFERENCES analytics_metric_definitions(metric_id),
+    district_code VARCHAR(30) NOT NULL,
+    period_start TIMESTAMPTZ NOT NULL,
+    period_end TIMESTAMPTZ NOT NULL,
+    dimension_values JSONB DEFAULT '{}'::jsonb,
+    raw_value NUMERIC,
+    display_value VARCHAR(50) NOT NULL,
+    suppressed BOOLEAN DEFAULT FALSE,
+    metric_status VARCHAR(30) NOT NULL DEFAULT 'OBSERVED',
+    computed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS analytics_access_audit (
+    audit_id VARCHAR(64) PRIMARY KEY,
+    actor_id VARCHAR(50) NOT NULL,
+    actor_role VARCHAR(30) NOT NULL,
+    endpoint VARCHAR(128) NOT NULL,
+    district_code VARCHAR(30),
+    period VARCHAR(20),
+    privacy_status VARCHAR(30) DEFAULT 'PASS',
+    accessed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS analytics_job_runs (
+    job_id VARCHAR(64) PRIMARY KEY,
+    metric_version VARCHAR(20) NOT NULL DEFAULT 'v1.0.0',
+    period VARCHAR(20) NOT NULL,
+    started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ,
+    status VARCHAR(30) NOT NULL DEFAULT 'RUNNING',
+    source_event_count INT DEFAULT 0,
+    processed_count INT DEFAULT 0,
+    suppressed_count INT DEFAULT 0,
+    error_count INT DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_summaries_district ON analytics_district_summaries(district_code);
+CREATE INDEX IF NOT EXISTS idx_analytics_summaries_period ON analytics_district_summaries(period, period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_analytics_values_metric ON analytics_metric_values(metric_id, district_code);
+CREATE INDEX IF NOT EXISTS idx_analytics_audit_actor ON analytics_access_audit(actor_id, accessed_at);
+CREATE INDEX IF NOT EXISTS idx_analytics_job_status ON analytics_job_runs(status, started_at);
+
 -- Seed baseline roles
 INSERT INTO roles (id, name, permissions) VALUES
     ('role-admin', 'ADMIN', '["*"]'::jsonb),
-    ('role-supervisor', 'SUPERVISOR', '["cases:read", "cases:write", "alerts:override", "audit:read"]'::jsonb),
+    ('role-supervisor', 'SUPERVISOR', '["cases:read", "cases:write", "alerts:override", "audit:read", "analytics:read"]'::jsonb),
+    ('role-district-admin', 'DISTRICT_ADMIN', '["analytics:read", "districts:read"]'::jsonb),
     ('role-operator', 'OPERATOR', '["cases:read", "cases:write", "calls:handle"]'::jsonb),
     ('role-auditor', 'AUDITOR', '["audit:read", "reports:read"]'::jsonb)
 ON CONFLICT (name) DO NOTHING;
+
 
 

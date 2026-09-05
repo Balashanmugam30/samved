@@ -112,6 +112,12 @@ class EventType(str, Enum):
     FOLLOWUP_ATTEMPT_RECORDED = "FOLLOWUP_ATTEMPT_RECORDED"
     FOLLOWUP_OUTCOME_RECORDED = "FOLLOWUP_OUTCOME_RECORDED"
 
+    # District Intelligence & Operational Analytics (Phase 13)
+    ANALYTICS_SUMMARY_UPDATED = "ANALYTICS_SUMMARY_UPDATED"
+    ANALYTICS_JOB_STARTED = "ANALYTICS_JOB_STARTED"
+    ANALYTICS_JOB_COMPLETED = "ANALYTICS_JOB_COMPLETED"
+    ANALYTICS_JOB_FAILED = "ANALYTICS_JOB_FAILED"
+
     # Heartbeat
     HEARTBEAT_PING = "HEARTBEAT_PING"
     HEARTBEAT_PONG = "HEARTBEAT_PONG"
@@ -800,6 +806,203 @@ class FollowupWorkqueueSummaryPayload(BaseModel):
     completed_today: int = 0
 
 
+# -------------------------------------------------------------------------
+# Phase 13: District Intelligence & Operational Analytics Contracts
+# -------------------------------------------------------------------------
+
+class MetricStatus(str, Enum):
+    OBSERVED = "OBSERVED"
+    CALCULATED = "CALCULATED"
+    ESTIMATED = "ESTIMATED"
+    SUPPRESSED = "SUPPRESSED"
+    UNAVAILABLE = "UNAVAILABLE"
 
 
+class TrendDirection(str, Enum):
+    RISING = "RISING"
+    FALLING = "FALLING"
+    STABLE = "STABLE"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
 
+
+class DataQualityStatus(str, Enum):
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    INCOMPLETE = "INCOMPLETE"
+
+
+class AnalyticsRole(str, Enum):
+    OPERATOR = "OPERATOR"
+    SUPERVISOR = "SUPERVISOR"
+    DISTRICT_ADMIN = "DISTRICT_ADMIN"
+    SYSTEM_ADMIN = "SYSTEM_ADMIN"
+
+
+class ServiceCategory(str, Enum):
+    SAFETY_SUPPORT = "SAFETY_SUPPORT"
+    COUNSELING_REFERRAL = "COUNSELING_REFERRAL"
+    LEGAL_INFORMATION = "LEGAL_INFORMATION"
+    SHELTER_SUPPORT = "SHELTER_SUPPORT"
+    HEALTH_SUPPORT = "HEALTH_SUPPORT"
+    FOLLOW_UP = "FOLLOW_UP"
+    GENERAL_INFORMATION = "GENERAL_INFORMATION"
+    OTHER = "OTHER"
+
+
+class TimePeriod(str, Enum):
+    HOUR = "HOUR"
+    DAY = "DAY"
+    WEEK = "WEEK"
+    MONTH = "MONTH"
+    QUARTER = "QUARTER"
+
+
+class MetricDefinitionPayload(BaseModel):
+    metric_id: str
+    metric_version: str = "v1.0.0"
+    name: str
+    category: str
+    definition: str
+    calculation_method: str
+    status: MetricStatus
+    privacy_level: str = "AGGREGATE"
+    source_event_types: List[str] = Field(default_factory=list)
+
+
+class MetricItemPayload(BaseModel):
+    metric_id: str
+    metric_version: str = "v1.0.0"
+    display_value: str
+    raw_value: Optional[float] = None
+    unit: Optional[str] = None
+    status: MetricStatus
+    suppressed: bool = False
+    trend: Optional[TrendDirection] = None
+    trend_pct: Optional[float] = None
+    period_start: str
+    period_end: str
+
+
+class DistrictSummaryPayload(BaseModel):
+    district_code: str
+    district_name: str
+    state_code: str
+    state_name: str
+    period: TimePeriod
+    period_start: str
+    period_end: str
+    timezone: str = "Asia/Kolkata"
+    total_calls: MetricItemPayload
+    completed_calls: MetricItemPayload
+    abandoned_calls: MetricItemPayload
+    unique_cases: MetricItemPayload
+    active_followups: MetricItemPayload
+    avg_response_time_sec: MetricItemPayload
+    safety_escalations_count: MetricItemPayload
+    privacy_status: str = "PASS"
+    data_quality_status: DataQualityStatus = DataQualityStatus.HEALTHY
+    computed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    metric_version: str = "v1.0.0"
+
+
+class LanguageDistributionItem(BaseModel):
+    language: str
+    language_name: str
+    percentage: float
+    count_display: str
+    suppressed: bool = False
+
+
+class ServiceDemandItem(BaseModel):
+    category: ServiceCategory
+    category_name: str
+    percentage: float
+    count_display: str
+    suppressed: bool = False
+
+
+class SafetyDistributionItem(BaseModel):
+    safety_state: str
+    percentage: float
+    count_display: str
+    suppressed: bool = False
+
+
+class SviDistributionItem(BaseModel):
+    band: str
+    percentage: float
+    count_display: str
+    suppressed: bool = False
+
+
+class FollowupAnalyticsPayload(BaseModel):
+    district_code: str
+    period_start: str
+    period_end: str
+    created_count: MetricItemPayload
+    completed_count: MetricItemPayload
+    missed_count: MetricItemPayload
+    blocked_count: MetricItemPayload
+    completion_rate: MetricItemPayload
+    missed_rate: MetricItemPayload
+    suppressed: bool = False
+
+
+class OperatorWorkloadPayload(BaseModel):
+    district_code: str
+    period_start: str
+    period_end: str
+    active_operators_count: MetricItemPayload
+    avg_calls_per_operator: MetricItemPayload
+    takeovers_count: MetricItemPayload
+    handoffs_requested: MetricItemPayload
+    handoffs_confirmed: MetricItemPayload
+    median_response_time_sec: MetricItemPayload
+    suppressed: bool = False
+
+
+class KnowledgeCategoryItem(BaseModel):
+    category: str
+    count_display: str
+    percentage: float
+    suppressed: bool = False
+
+
+class KnowledgeAnalyticsPayload(BaseModel):
+    district_code: str
+    total_queries: MetricItemPayload
+    no_source_rate: MetricItemPayload
+    conflict_rate: MetricItemPayload
+    review_recommended_rate: MetricItemPayload
+    top_categories: List[KnowledgeCategoryItem] = Field(default_factory=list)
+
+
+class SystemHealthPayload(BaseModel):
+    api_latency_p95_ms: MetricItemPayload
+    stt_failure_rate: MetricItemPayload
+    tts_failure_rate: MetricItemPayload
+    orchestration_timeout_rate: MetricItemPayload
+    websocket_reconnect_rate: MetricItemPayload
+
+
+class AnalyticsQueryPayload(BaseModel):
+    state_code: Optional[str] = None
+    district_code: Optional[str] = None
+    period: TimePeriod = TimePeriod.DAY
+    start_date: str
+    end_date: str
+    language: Optional[str] = None
+    service_category: Optional[ServiceCategory] = None
+    role: AnalyticsRole = AnalyticsRole.DISTRICT_ADMIN
+
+
+class AnalyticsJobPayload(BaseModel):
+    job_id: str
+    period: str
+    started_at: str
+    completed_at: Optional[str] = None
+    status: str = "RUNNING"
+    source_event_count: int = 0
+    processed_count: int = 0
+    suppressed_count: int = 0
+    error_count: int = 0

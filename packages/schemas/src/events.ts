@@ -114,6 +114,12 @@ export enum EventType {
   FOLLOWUP_ATTEMPT_RECORDED = "FOLLOWUP_ATTEMPT_RECORDED",
   FOLLOWUP_OUTCOME_RECORDED = "FOLLOWUP_OUTCOME_RECORDED",
 
+  // District Intelligence & Operational Analytics (Phase 13)
+  ANALYTICS_SUMMARY_UPDATED = "ANALYTICS_SUMMARY_UPDATED",
+  ANALYTICS_JOB_STARTED = "ANALYTICS_JOB_STARTED",
+  ANALYTICS_JOB_COMPLETED = "ANALYTICS_JOB_COMPLETED",
+  ANALYTICS_JOB_FAILED = "ANALYTICS_JOB_FAILED",
+
   // Heartbeat / ping-pong
   HEARTBEAT_PING = "HEARTBEAT_PING",
   HEARTBEAT_PONG = "HEARTBEAT_PONG"
@@ -830,5 +836,197 @@ export interface FollowupWorkqueueSummaryPayload {
   completed_today: number;
 }
 
+// -------------------------------------------------------------------------
+// Phase 13: District Intelligence & Operational Analytics Contracts
+// -------------------------------------------------------------------------
 
+export enum MetricStatus {
+  OBSERVED = "OBSERVED",
+  CALCULATED = "CALCULATED",
+  ESTIMATED = "ESTIMATED",
+  SUPPRESSED = "SUPPRESSED",
+  UNAVAILABLE = "UNAVAILABLE",
+}
 
+export enum TrendDirection {
+  RISING = "RISING",
+  FALLING = "FALLING",
+  STABLE = "STABLE",
+  INSUFFICIENT_DATA = "INSUFFICIENT_DATA",
+}
+
+export enum DataQualityStatus {
+  HEALTHY = "HEALTHY",
+  DEGRADED = "DEGRADED",
+  INCOMPLETE = "INCOMPLETE",
+}
+
+export enum AnalyticsRole {
+  OPERATOR = "OPERATOR",
+  SUPERVISOR = "SUPERVISOR",
+  DISTRICT_ADMIN = "DISTRICT_ADMIN",
+  SYSTEM_ADMIN = "SYSTEM_ADMIN",
+}
+
+export enum ServiceCategory {
+  SAFETY_SUPPORT = "SAFETY_SUPPORT",
+  COUNSELING_REFERRAL = "COUNSELING_REFERRAL",
+  LEGAL_INFORMATION = "LEGAL_INFORMATION",
+  SHELTER_SUPPORT = "SHELTER_SUPPORT",
+  HEALTH_SUPPORT = "HEALTH_SUPPORT",
+  FOLLOW_UP = "FOLLOW_UP",
+  GENERAL_INFORMATION = "GENERAL_INFORMATION",
+  OTHER = "OTHER",
+}
+
+export enum TimePeriod {
+  HOUR = "HOUR",
+  DAY = "DAY",
+  WEEK = "WEEK",
+  MONTH = "MONTH",
+  QUARTER = "QUARTER",
+}
+
+export interface MetricDefinitionPayload {
+  metric_id: string;
+  metric_version: string;
+  name: string;
+  category: string;
+  definition: string;
+  calculation_method: string;
+  status: MetricStatus;
+  privacy_level: string;
+  source_event_types: string[];
+}
+
+export interface MetricItemPayload {
+  metric_id: string;
+  metric_version: string;
+  display_value: string;
+  raw_value?: number | null;
+  unit?: string;
+  status: MetricStatus;
+  suppressed: boolean;
+  trend?: TrendDirection;
+  trend_pct?: number;
+  period_start: string;
+  period_end: string;
+}
+
+export interface DistrictSummaryPayload {
+  district_code: string;
+  district_name: string;
+  state_code: string;
+  state_name: string;
+  period: TimePeriod;
+  period_start: string;
+  period_end: string;
+  timezone: string;
+  total_calls: MetricItemPayload;
+  completed_calls: MetricItemPayload;
+  abandoned_calls: MetricItemPayload;
+  unique_cases: MetricItemPayload;
+  active_followups: MetricItemPayload;
+  avg_response_time_sec: MetricItemPayload;
+  safety_escalations_count: MetricItemPayload;
+  privacy_status: "PASS" | "SUPPRESSED";
+  data_quality_status: DataQualityStatus;
+  computed_at: string;
+  metric_version: string;
+}
+
+export interface LanguageDistributionItem {
+  language: string;
+  language_name: string;
+  percentage: number;
+  count_display: string;
+  suppressed: boolean;
+}
+
+export interface ServiceDemandItem {
+  category: ServiceCategory;
+  category_name: string;
+  percentage: number;
+  count_display: string;
+  suppressed: boolean;
+}
+
+export interface SafetyDistributionItem {
+  safety_state: string;
+  percentage: number;
+  count_display: string;
+  suppressed: boolean;
+}
+
+export interface SviDistributionItem {
+  band: string;
+  percentage: number;
+  count_display: string;
+  suppressed: boolean;
+}
+
+export interface FollowupAnalyticsPayload {
+  district_code: string;
+  period_start: string;
+  period_end: string;
+  created_count: MetricItemPayload;
+  completed_count: MetricItemPayload;
+  missed_count: MetricItemPayload;
+  blocked_count: MetricItemPayload;
+  completion_rate: MetricItemPayload;
+  missed_rate: MetricItemPayload;
+  suppressed: boolean;
+}
+
+export interface OperatorWorkloadPayload {
+  district_code: string;
+  period_start: string;
+  period_end: string;
+  active_operators_count: MetricItemPayload;
+  avg_calls_per_operator: MetricItemPayload;
+  takeovers_count: MetricItemPayload;
+  handoffs_requested: MetricItemPayload;
+  handoffs_confirmed: MetricItemPayload;
+  median_response_time_sec: MetricItemPayload;
+  suppressed: boolean;
+}
+
+export interface KnowledgeAnalyticsPayload {
+  district_code: string;
+  total_queries: MetricItemPayload;
+  no_source_rate: MetricItemPayload;
+  conflict_rate: MetricItemPayload;
+  review_recommended_rate: MetricItemPayload;
+  top_categories: { category: string; count_display: string; percentage: number; suppressed: boolean }[];
+}
+
+export interface SystemHealthPayload {
+  api_latency_p95_ms: MetricItemPayload;
+  stt_failure_rate: MetricItemPayload;
+  tts_failure_rate: MetricItemPayload;
+  orchestration_timeout_rate: MetricItemPayload;
+  websocket_reconnect_rate: MetricItemPayload;
+}
+
+export interface AnalyticsQueryPayload {
+  state_code?: string | null;
+  district_code?: string | null;
+  period: TimePeriod;
+  start_date: string;
+  end_date: string;
+  language?: string | null;
+  service_category?: ServiceCategory | null;
+  role: AnalyticsRole;
+}
+
+export interface AnalyticsJobPayload {
+  job_id: string;
+  period: string;
+  started_at: string;
+  completed_at?: string | null;
+  status: "RUNNING" | "COMPLETED" | "FAILED";
+  source_event_count: number;
+  processed_count: number;
+  suppressed_count: number;
+  error_count: number;
+}

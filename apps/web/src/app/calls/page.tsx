@@ -44,6 +44,7 @@ import {
   UserCheck,
   History,
   Ban,
+  BarChart3,
 } from "lucide-react";
 import { useOperatorWebSocket } from "@/hooks/useOperatorWebSocket";
 import {
@@ -2321,6 +2322,17 @@ export default function OperatorCallsPage() {
             <Compass className="h-3.5 w-3.5 text-emerald-400" />
             <span>Adaptive Lab</span>
           </button>
+
+          {/* Phase 13: Operations Analytics Link */}
+          <a
+            data-testid="link-operations-analytics"
+            href="/analytics"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 text-xs font-semibold transition-all"
+            title="Open District & Operations Analytics Dashboard"
+          >
+            <BarChart3 className="h-3.5 w-3.5 text-sky-400" />
+            <span>Operations Analytics</span>
+          </a>
 
           {/* Action Buttons */}
           <button

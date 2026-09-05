@@ -412,6 +412,75 @@ curl http://localhost:8000/v1/followups/fol-1001/audit
 9. Inspect **Event Timeline**:
    - Click `FOLLOWUP` filter pill (`data-testid="timeline-filter-FOLLOWUP"`) to isolate follow-up lifecycle events.
 
+---
 
+## 10. Verifying Phase 13 District Intelligence & Operational Analytics
 
+### 10.1 Subsystem Health & Metric Catalog
+```bash
+# Verify analytics status and governance parameters
+curl http://localhost:8000/v1/analytics/status
 
+# List complete versioned catalog of metrics (v1.0.0)
+curl http://localhost:8000/v1/analytics/metrics
+
+# List normalized districts
+curl http://localhost:8000/v1/analytics/districts
+```
+
+### 10.2 District Operational Summaries & Distributions
+```bash
+# Fetch district operational summary (Chennai)
+curl -H "X-User-Role: DISTRICT_ADMIN" http://localhost:8000/v1/analytics/districts/TN-CHE/summary
+
+# Fetch period-over-period trend points
+curl -H "X-User-Role: DISTRICT_ADMIN" http://localhost:8000/v1/analytics/districts/TN-CHE/trends
+
+# Fetch multilingual language mix
+curl -H "X-User-Role: DISTRICT_ADMIN" http://localhost:8000/v1/analytics/districts/TN-CHE/languages
+
+# Fetch standardized service category demand
+curl -H "X-User-Role: DISTRICT_ADMIN" http://localhost:8000/v1/analytics/districts/TN-CHE/services
+
+# Fetch deterministic safety state distribution
+curl -H "X-User-Role: DISTRICT_ADMIN" http://localhost:8000/v1/analytics/districts/TN-CHE/safety
+
+# Fetch SVI vulnerability band distribution
+curl -H "X-User-Role: DISTRICT_ADMIN" http://localhost:8000/v1/analytics/districts/TN-CHE/svi
+
+# Fetch care continuity follow-up completion rates
+curl -H "X-User-Role: DISTRICT_ADMIN" http://localhost:8000/v1/analytics/districts/TN-CHE/followups
+
+# Fetch counselor workload and response times
+curl -H "X-User-Role: DISTRICT_ADMIN" http://localhost:8000/v1/analytics/districts/TN-CHE/operations
+```
+
+### 10.3 Privacy & Suppression Verification
+```bash
+# Query low-cohort district (Karaikal, PY-KKL: <10 records)
+# Verifies privacy_status=SUPPRESSED and raw_value=null
+curl -H "X-User-Role: DISTRICT_ADMIN" http://localhost:8000/v1/analytics/districts/PY-KKL/summary
+
+# Verify OPERATOR role access denial (403 Forbidden)
+curl -H "X-User-Role: OPERATOR" http://localhost:8000/v1/analytics/districts/TN-CHE/summary
+```
+
+### 10.4 Web Dashboard Verification (`/analytics`)
+1. Navigate to `http://localhost:3000/analytics`.
+2. Verify **Governance Watermark Banner** (`data-testid="governance-watermark"`):
+   - Confirms non-predictive policy: *"Not a predictive risk score. Not for individual enforcement decisions."*
+3. Test **Role Switcher**:
+   - Select `OPERATOR` &rarr; verify `data-testid="access-denied-banner"` appears with 403 explanation.
+   - Select `DISTRICT_ADMIN` &rarr; verify dashboard metrics restore.
+4. Test **District Filter**:
+   - Select `Chennai (TN-CHE)` &rarr; verify KPI strip, trends, and distributions render.
+   - Select `Karaikal (PY-KKL)` &rarr; verify `data-testid="suppressed-cohort-banner"` appears and KPI counts show `SUPPRESSED`.
+5. Test **Chart & Table View Toggle**:
+   - Click `Table View` (`data-testid="table-toggle-btn"`) to verify accessible tabular display.
+6. Test **Metric Inspector Drawer**:
+   - Click any KPI card (e.g. `Total Calls`) to open `data-testid="metric-detail-drawer"`.
+   - Inspect mathematical formula, trust classification (`OBSERVED`), privacy status (`PASS`), and version (`v1.0.0`).
+7. Test **Operator Workstation Link**:
+   - Navigate to `http://localhost:3000/calls`.
+   - In the top action bar, click **Operations Analytics** (`data-testid="link-operations-analytics"`).
+   - Confirms smooth navigation back to `/analytics`.

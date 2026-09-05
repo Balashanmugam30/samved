@@ -11,6 +11,7 @@ from app.api.v1.orchestration import router as orchestration_router
 from app.api.v1.knowledge import router as knowledge_router
 from app.api.v1.cases import router as cases_router
 from app.api.v1.followups import router as followups_router
+from app.api.v1.analytics import router as analytics_router
 
 api_v1_router = APIRouter(prefix="/v1")
 api_v1_router.include_router(health_router)
@@ -25,6 +26,7 @@ api_v1_router.include_router(orchestration_router)
 api_v1_router.include_router(knowledge_router)
 api_v1_router.include_router(cases_router)
 api_v1_router.include_router(followups_router)
+api_v1_router.include_router(analytics_router, prefix="/analytics")
 
 
 

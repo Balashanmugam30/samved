@@ -676,6 +676,99 @@ CREATE INDEX IF NOT EXISTS idx_sim_runs_suite_status ON simulation_benchmark_run
 CREATE INDEX IF NOT EXISTS idx_training_drills_diff ON operator_training_drills(difficulty, category);
 CREATE INDEX IF NOT EXISTS idx_training_sessions_trainee ON operator_training_sessions(trainee_id, started_at);
 
+-- ============================================================================
+-- Phase 14: Scenario Simulator & Evaluation Lab Tables (Master Expansion)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS evaluation_scenarios (
+    id VARCHAR(64) PRIMARY KEY,
+    scenario_id VARCHAR(64) UNIQUE NOT NULL,
+    scenario_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    locale VARCHAR(10) NOT NULL DEFAULT 'en-IN',
+    channel VARCHAR(30) DEFAULT 'PSTN_8KHZ',
+    difficulty VARCHAR(30) DEFAULT 'BEGINNER',
+    tags JSONB DEFAULT '[]'::jsonb,
+    synthetic_disclaimer TEXT NOT NULL,
+    caller_profile JSONB DEFAULT '{}'::jsonb,
+    turns JSONB NOT NULL DEFAULT '[]'::jsonb,
+    expected JSONB NOT NULL DEFAULT '{}'::jsonb,
+    fault_injection VARCHAR(50) DEFAULT 'NONE',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_runs (
+    run_id VARCHAR(64) PRIMARY KEY,
+    scenario_id VARCHAR(64) NOT NULL,
+    scenario_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    suite_id VARCHAR(64),
+    mode VARCHAR(30) NOT NULL DEFAULT 'OFFLINE',
+    seed INT NOT NULL DEFAULT 42,
+    execution_status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+    evaluation_status VARCHAR(30) NOT NULL DEFAULT 'PASS',
+    started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ,
+    duration_ms FLOAT DEFAULT 0.0,
+    synthetic_marker VARCHAR(64) NOT NULL DEFAULT 'SYNTHETIC_EVALUATION',
+    metrics JSONB DEFAULT '{}'::jsonb,
+    events_count INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_assertions (
+    id VARCHAR(64) PRIMARY KEY,
+    run_id VARCHAR(64) NOT NULL REFERENCES evaluation_runs(run_id) ON DELETE CASCADE,
+    assertion_id VARCHAR(64) NOT NULL,
+    category VARCHAR(64) NOT NULL,
+    description TEXT NOT NULL,
+    passed BOOLEAN NOT NULL,
+    expected JSONB,
+    actual JSONB,
+    message TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_findings (
+    finding_id VARCHAR(64) PRIMARY KEY,
+    run_id VARCHAR(64) NOT NULL REFERENCES evaluation_runs(run_id) ON DELETE CASCADE,
+    scenario_id VARCHAR(64) NOT NULL,
+    subsystem VARCHAR(64) NOT NULL,
+    severity VARCHAR(20) NOT NULL,
+    message TEXT NOT NULL,
+    details JSONB DEFAULT '{}'::jsonb,
+    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_baselines (
+    baseline_id VARCHAR(64) PRIMARY KEY,
+    scenario_id VARCHAR(64) NOT NULL,
+    scenario_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    evaluation_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    seed INT NOT NULL DEFAULT 42,
+    status VARCHAR(30) NOT NULL DEFAULT 'PASS',
+    metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+    captured_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_events (
+    id VARCHAR(64) PRIMARY KEY,
+    run_id VARCHAR(64) NOT NULL REFERENCES evaluation_runs(run_id) ON DELETE CASCADE,
+    scenario_id VARCHAR(64) NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    stage VARCHAR(64),
+    payload JSONB DEFAULT '{}'::jsonb,
+    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_eval_scenarios_id ON evaluation_scenarios(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_eval_runs_scenario ON evaluation_runs(scenario_id, execution_status);
+CREATE INDEX IF NOT EXISTS idx_eval_runs_suite ON evaluation_runs(suite_id);
+CREATE INDEX IF NOT EXISTS idx_eval_assertions_run ON evaluation_assertions(run_id);
+CREATE INDEX IF NOT EXISTS idx_eval_findings_run ON evaluation_findings(run_id, severity);
+CREATE INDEX IF NOT EXISTS idx_eval_baselines_scenario ON evaluation_baselines(scenario_id, scenario_version);
+CREATE INDEX IF NOT EXISTS idx_eval_events_run ON evaluation_events(run_id, timestamp);
+
 
 
 

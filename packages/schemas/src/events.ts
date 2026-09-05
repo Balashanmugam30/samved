@@ -128,6 +128,21 @@ export enum EventType {
   TRAINING_SESSION_COMPLETED = "TRAINING_SESSION_COMPLETED",
   TRAINING_TURN_EVALUATED = "TRAINING_TURN_EVALUATED",
 
+  // Scenario Simulator & Evaluation Lab (Phase 14)
+  EVALUATION_RUN_CREATED = "EVALUATION_RUN_CREATED",
+  EVALUATION_RUN_STARTED = "EVALUATION_RUN_STARTED",
+  EVALUATION_SCENARIO_LOADED = "EVALUATION_SCENARIO_LOADED",
+  EVALUATION_TURN_INJECTED = "EVALUATION_TURN_INJECTED",
+  EVALUATION_STAGE_STARTED = "EVALUATION_STAGE_STARTED",
+  EVALUATION_STAGE_COMPLETED = "EVALUATION_STAGE_COMPLETED",
+  EVALUATION_ASSERTION_PASSED = "EVALUATION_ASSERTION_PASSED",
+  EVALUATION_ASSERTION_FAILED = "EVALUATION_ASSERTION_FAILED",
+  EVALUATION_FINDING_RECORDED = "EVALUATION_FINDING_RECORDED",
+  EVALUATION_BASELINE_COMPARED = "EVALUATION_BASELINE_COMPARED",
+  EVALUATION_RUN_COMPLETED = "EVALUATION_RUN_COMPLETED",
+  EVALUATION_RUN_CANCELLED = "EVALUATION_RUN_CANCELLED",
+  EVALUATION_RUN_FAILED = "EVALUATION_RUN_FAILED",
+
   // Heartbeat / ping-pong
   HEARTBEAT_PING = "HEARTBEAT_PING",
   HEARTBEAT_PONG = "HEARTBEAT_PONG"
@@ -1192,4 +1207,183 @@ export interface TrainingSessionPayload {
   recommendations?: string[];
   evaluated_turns: TrainingTurnEvaluationPayload[];
 }
+
+// ---------------------------------------------------------------------------
+// Scenario Simulator & Evaluation Lab (Phase 14 Master Expansion)
+// ---------------------------------------------------------------------------
+
+export enum EvaluationMode {
+  OFFLINE = "OFFLINE",
+  INTEGRATED = "INTEGRATED"
+}
+
+export enum FindingSeverity {
+  PASS = "PASS",
+  INFO = "INFO",
+  WARNING = "WARNING",
+  FAIL = "FAIL",
+  BLOCKED = "BLOCKED"
+}
+
+export enum EvaluationStatus {
+  PASS = "PASS",
+  FAIL = "FAIL",
+  WARNING = "WARNING",
+  BLOCKED = "BLOCKED"
+}
+
+export enum FaultType {
+  NONE = "NONE",
+  STT_UNAVAILABLE = "STT_UNAVAILABLE",
+  TTS_UNAVAILABLE = "TTS_UNAVAILABLE",
+  ORCHESTRATION_TIMEOUT = "ORCHESTRATION_TIMEOUT",
+  KNOWLEDGE_TIMEOUT = "KNOWLEDGE_TIMEOUT",
+  STALE_AGENT_RESULT = "STALE_AGENT_RESULT",
+  MALFORMED_EVENT = "MALFORMED_EVENT",
+  DUPLICATE_EVENT = "DUPLICATE_EVENT",
+  OUT_OF_ORDER_EVENT = "OUT_OF_ORDER_EVENT",
+  PARTIAL_STAGE_FAILURE = "PARTIAL_STAGE_FAILURE",
+  OPERATOR_DISCONNECT = "OPERATOR_DISCONNECT"
+}
+
+export interface CallerProfile {
+  caller_id: string;
+  age_group?: string;
+  gender?: string;
+  location_hint?: string;
+  dialect_notes?: string;
+  prior_contact_history?: boolean;
+}
+
+export interface ScenarioTurn {
+  turn_number: number;
+  speaker: "caller" | "agent" | "system";
+  text: string;
+  transcription_hypothesis?: string;
+  acoustic_features?: Record<string, number | string | boolean>;
+  injected_fault?: FaultType;
+}
+
+export interface GoldenExpectations {
+  expected_safety_state?: string;
+  expected_safety_minimum?: string;
+  expected_svi_band?: string;
+  expected_svi_score_range?: [number, number];
+  expected_required_human_review?: boolean;
+  expected_language?: string;
+  expected_event_types?: string[];
+  expected_adaptive_policy?: string;
+  expected_handoff_state?: string;
+  expected_followup_state?: string;
+  expected_knowledge_citations?: string[];
+  forbidden_event_types?: string[];
+  forbidden_actions?: string[];
+  max_p95_latency_ms?: number;
+}
+
+export interface EvaluationAssertionResult {
+  assertion_id: string;
+  category: string;
+  description: string;
+  passed: boolean;
+  expected: unknown;
+  actual: unknown;
+  message?: string;
+}
+
+export interface EvaluationFinding {
+  finding_id: string;
+  scenario_id: string;
+  subsystem: string;
+  severity: FindingSeverity;
+  message: string;
+  details?: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface SubsystemMetrics {
+  safety: Record<string, unknown>;
+  svi: Record<string, unknown>;
+  adaptive: Record<string, unknown>;
+  acoustic: Record<string, unknown>;
+  orchestration: Record<string, unknown>;
+  rag: Record<string, unknown>;
+  case_intelligence: Record<string, unknown>;
+  followup: Record<string, unknown>;
+  analytics_isolation: Record<string, unknown>;
+  latency: {
+    total_ms: number;
+    p95_ms: number;
+    min_ms: number;
+    median_ms: number;
+    max_ms: number;
+    stage_breakdown: Record<string, number>;
+  };
+}
+
+export interface ScenarioDefinition {
+  scenario_id: string;
+  scenario_version: string;
+  title: string;
+  description: string;
+  locale: string;
+  channel: string;
+  difficulty: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "EXPERT";
+  tags: string[];
+  synthetic_disclaimer: string;
+  caller_profile: CallerProfile;
+  turns: ScenarioTurn[];
+  expected: GoldenExpectations;
+  fault_injection?: FaultType;
+}
+
+export interface BaselineSnapshot {
+  baseline_id: string;
+  scenario_id: string;
+  scenario_version: string;
+  evaluation_version: string;
+  seed: number;
+  status: EvaluationStatus;
+  metrics: SubsystemMetrics;
+  captured_at: string;
+}
+
+export interface RunDiffItem {
+  field: string;
+  subsystem: string;
+  baseline_value: unknown;
+  current_value: unknown;
+  is_regression: boolean;
+  message: string;
+}
+
+export interface RunDiffResult {
+  baseline_id: string;
+  current_run_id: string;
+  scenario_id: string;
+  status: "IDENTICAL" | "IMPROVED" | "REGRESSED" | "CHANGED";
+  has_regression: boolean;
+  differences: RunDiffItem[];
+}
+
+export interface EvaluationRunPayload {
+  run_id: string;
+  scenario_id: string;
+  scenario_version: string;
+  suite_id?: string;
+  mode: EvaluationMode;
+  seed: number;
+  execution_status: "PENDING" | "RUNNING" | "COMPLETED" | "CANCELLED" | "FAILED";
+  evaluation_status: EvaluationStatus;
+  started_at: string;
+  completed_at?: string | null;
+  duration_ms: number;
+  synthetic_marker: string;
+  assertions: EvaluationAssertionResult[];
+  findings: EvaluationFinding[];
+  metrics: SubsystemMetrics;
+  events_count: number;
+  baseline_diff?: RunDiffResult | null;
+}
+
 

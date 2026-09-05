@@ -578,3 +578,106 @@ curl http://localhost:8000/v1/simulation/training/session/SESSION_ID
    - Click `Submit Turn` (`data-testid="btn-submit-turn"`).
    - Verify immediate SOP Rubric scoring (Safety Protocol 35/35, Empathy 22/25, Pacing 18/20, Referral 17/20) and feedback hints.
 
+---
+
+## 12. Verifying Phase 14 Scenario Simulator & Evaluation Lab (`/evaluation`)
+
+### 12.1 Evaluation Lab Subsystem Status
+```bash
+# Check evaluation lab health, registered scenarios, and baselines count
+curl http://localhost:8000/v1/evaluation/status
+```
+
+### 12.2 Calibrated Benchmark Scenarios (19 Scenarios, Categories A through Q)
+```bash
+# List all calibrated scenarios
+curl http://localhost:8000/v1/evaluation/scenarios
+
+# Filter scenarios by tag (e.g. smoke, safety, multilingual, rag)
+curl "http://localhost:8000/v1/evaluation/scenarios?tag=safety"
+
+# Inspect detailed scenario specification with multi-turn narrative & golden expectations
+curl http://localhost:8000/v1/evaluation/scenarios/SCEN-CRIT-001
+```
+
+### 12.3 Execute Evaluation Replays & Fault Injection
+```bash
+# Execute offline deterministic replay (Seed 42)
+curl -X POST http://localhost:8000/v1/evaluation/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scenario_id": "SCEN-CRIT-001",
+    "mode": "OFFLINE",
+    "seed": 42
+  }'
+
+# Execute replay with injected fault (e.g. statutory RAG knowledge timeout)
+curl -X POST http://localhost:8000/v1/evaluation/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scenario_id": "SCEN-RAG-001",
+    "mode": "INTEGRATED",
+    "seed": 42,
+    "fault": {
+      "fault_type": "KNOWLEDGE_TIMEOUT",
+      "target_subsystem": "rag",
+      "delay_ms": 3500
+    }
+  }'
+
+# Execute batch benchmark suite (e.g. smoke suite)
+curl -X POST http://localhost:8000/v1/evaluation/suites/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "suite_name": "smoke",
+    "mode": "OFFLINE",
+    "seed": 42
+  }'
+```
+
+### 12.4 Golden Baselines & Regression Detection
+```bash
+# List golden baselines
+curl http://localhost:8000/v1/evaluation/baselines
+
+# Capture run as a new golden baseline
+curl -X POST http://localhost:8000/v1/evaluation/baselines \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scenario_id": "SCEN-GEN-001",
+    "run_id": "RUN-EVAL-XXXXXX",
+    "created_by": "eval_lead",
+    "description": "Golden baseline for general information triage"
+  }'
+
+# Compare current run against baseline snapshot to detect regressions
+curl -X POST http://localhost:8000/v1/evaluation/diff \
+  -H "Content-Type: application/json" \
+  -d '{
+    "baseline_id": "BASE-SCEN-GEN-001-v1",
+    "current_run_id": "RUN-EVAL-YYYYYY"
+  }'
+```
+
+### 12.5 Web Console Verification (`/evaluation`)
+1. Navigate to `http://localhost:3000/evaluation` (or click **Evaluation Lab** in the sidebar).
+2. Verify **Governance Warning Banner**:
+   - Amber warning banner prominently declaring: *"Synthetic Evaluation Environment: All scenarios, caller personas, and telephone interactions are simulated benchmarks. Zero connection to live telecom carriers, production victim registries, or real emergency dispatchers. AUTONOMOUS DISPATCH: FALSE. ISOLATED SANDBOX."*
+3. Explore **Scenario Library Tab**:
+   - Filter scenarios using search input or category pills (`All`, `Smoke`, `Safety`, `Multilingual`, `RAG`, etc.).
+   - Click `Inspect Spec` on any card to slide out the Scenario Narrative & Machine-Checkable Expectations drawer.
+   - Click `Run Scenario Replay` (`data-testid="run-scenario-btn"`) on any card to execute in-memory simulation.
+4. Inspect **Active Run Telemetry Tab**:
+   - Observe `STATUS: PASS` / `FAIL` badge, scenario ID, and P95 replay latency KPI card.
+   - Click **Findings** sub-tab: Displays structured findings catalog.
+   - Click **Assertions** sub-tab: Confirms machine-checkable golden expectations against actual run telemetry.
+   - Click **Subsystem Telemetry** sub-tab: Inspects per-subsystem telemetry (Safety rules & human review required, SVI score & band, Adaptive policy, Acoustic frames & silence, Orchestration DAG, RAG citations, Case Intelligence handoff, Follow-up continuity).
+   - Click **Latency Waterfall** sub-tab: Visualizes millisecond breakdown per pipeline stage.
+   - Click **Baseline Diff** sub-tab: Select a baseline snapshot and click `Compute Regression Diff` to verify `NO REGRESSION` or inspect field deltas.
+5. Benchmark with **Suite Runner Tab**:
+   - Select evaluation suite (`Smoke`, `Safety`, `Multilingual`, `Adaptive`, `Orchestration`, `RAG`, `Case`, `Follow-up`, `Privacy`, `Full`).
+   - Choose Replay Mode (`Offline Replay` or `Integrated Pipeline`).
+   - Enter deterministic seed (e.g. `42`).
+   - Click `Execute Suite` to run batch benchmark evaluation.
+
+

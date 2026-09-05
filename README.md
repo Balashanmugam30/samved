@@ -330,6 +330,14 @@ pnpm dev:web
 | **Interactive Operator Training Sandbox & Real-time SOP Scoring** | ✅ | Phase 14 |
 | **Simulation Web Console (`/simulation`) & Telephony Isolation (`SIM-*`)** | ✅ | Phase 14 |
 | **Simulation REST APIs (`/v1/simulation/...`) & Run Persistence** | ✅ | Phase 14 |
+| **Evaluation Lab Replay Engine (`OFFLINE` & `INTEGRATED` Modes)** | ✅ | Phase 14 |
+| **Calibrated Benchmark Corpus (19 Scenarios, Categories A through Q)** | ✅ | Phase 14 |
+| **Machine-Checkable Golden Expectations & Assertions Engine** | ✅ | Phase 14 |
+| **Subsystem Fault Injection Interceptor (Timeouts, Errors, Delays)** | ✅ | Phase 14 |
+| **Baseline Snapshot Capture & Cryptographic Telemetry Hashing** | ✅ | Phase 14 |
+| **Automated Regression Diff & Structured Findings Detector** | ✅ | Phase 14 |
+| **Evaluation Lab Web Console (`/evaluation`) & Suite Runner** | ✅ | Phase 14 |
+| **Evaluation REST APIs (`/v1/evaluation/...`, 12 Endpoints)** | ✅ | Phase 14 |
 | **Security & Privacy Hardening** | ⏳ Next | Phase 15 |
 
 ---

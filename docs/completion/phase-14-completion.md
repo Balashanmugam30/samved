@@ -92,48 +92,119 @@ Mounted at `/v1/simulation`:
 
 ---
 
+### 2.6 Evaluation Lab Subsystem (`apps/api/app/evaluation/`)
+1. **Domain Models & Contracts (`models.py`, `schemas.py`)**:
+   - `EvaluationMode` (`OFFLINE`, `INTEGRATED`), `FindingSeverity` (`PASS`, `INFO`, `WARNING`, `FAIL`, `CRITICAL`), `EvaluationStatus` (`PASS`, `FAIL`, `WARN`, `ERROR`), `FaultType` (`NONE`, `TIMEOUT`, `PROVIDER_DOWN`, `NETWORK_FAILURE`, `CIRCUIT_BREAKER_TRIGGERED`, `KNOWLEDGE_TIMEOUT`, `ORCHESTRATION_FAILURE`).
+   - Pydantic domain models: `ScenarioDefinition`, `CallerProfile`, `ScenarioTurn`, `GoldenExpectations`, `EvaluationAssertionResult`, `EvaluationFinding`, `SubsystemMetrics`, `EvaluationRunRecord`, `BaselineSnapshot`, `RunDiffResult`.
+2. **Calibrated Benchmark Corpus (`corpus.py`)**:
+   - 19 golden scenarios across categories A through Q:
+     - `SCEN-CRIT-001` (A: Hindi acute suicidal crisis)
+     - `SCEN-CRIT-002` (B: English active weapon violence threat)
+     - `SCEN-CRIT-003` (C: English acute opioid overdose medical emergency)
+     - `SCEN-HIGH-001` (D: Hindi severe withdrawal & locked room confinement)
+     - `SCEN-HIGH-002` (E: English coerced minor substance consumption)
+     - `SCEN-HIGH-003` (F: Hindi life-threatening alcohol withdrawal delirium)
+     - `SCEN-MOD-001` (G: English relapse prevention guidance)
+     - `SCEN-MOD-002` (H: Hindi family member codependency inquiry)
+     - `SCEN-GEN-001` (I: English IRCA de-addiction directory lookup)
+     - `SCEN-MULTI-001` (J: Tanglish code-switching acute crisis)
+     - `SCEN-MULTI-002` (J: Telugu rural agricultural worker intake)
+     - `SCEN-ADAPT-001` (K: Hesitant silent caller pacing adaptation)
+     - `SCEN-ADAPT-002` (K: Agitated shouting caller de-escalation)
+     - `SCEN-ACOU-001` (L: 8kHz PSTN line noise packet drop recovery)
+     - `SCEN-FAULT-001` (M: LLM timeout graceful fallback)
+     - `SCEN-RAG-001` (N: NDPS Act legal citation grounding)
+     - `SCEN-CASE-001` (O: Repeat caller knowledge graph warm handoff)
+     - `SCEN-FLW-001` (P: Scheduled recovery follow-up continuity)
+     - `SCEN-PRIV-001` (Q: District analytics small-cell isolation verification)
+3. **Machine-Checkable Assertion Engine (`assertions.py`)**:
+   - Verifies expected safety state, prohibited safety triggers, expected SVI band, SVI score boundaries, required telemetry, latency P95 SLA, citations validity, and zero autonomous dispatch.
+4. **Fault Injection Interceptor (`faults.py`)**:
+   - Intercepts calls to simulate timeouts, synthetic latency delays, provider down conditions, or orchestration failures to measure pipeline resilience.
+5. **Baseline Snapshot Capture & Regression Diff Engine (`diff.py`)**:
+   - Compares current run metrics against established golden baselines.
+   - Computes SHA-256 telemetry hash.
+   - Detects safety regressions (critical drop), SVI score shifts, latency SLA breaches, and generates structured findings.
+6. **Replay Engine (`engine.py`) & Service (`service.py`)**:
+   - Replays multi-turn scenarios deterministically through `DeterministicSafetyEngine`, `SVIEngine`, `AcousticEngine`, `AdaptiveEngine`, `MultiAgentOrchestrator`, and `KnowledgeService`.
+   - Full persistence across in-memory state and SQL evaluation tables.
+
+### 2.7 Evaluation Lab REST APIs (`apps/api/app/api/v1/evaluation.py`)
+Mounted at `/v1/evaluation`:
+- `GET /status` — Operational health, total scenarios, baselines, completed runs.
+- `GET /scenarios` — Scenario library with tag, band, and locale filters.
+- `GET /scenarios/{id}` — Detailed scenario definition with multi-turn narrative.
+- `POST /runs` — Executes single scenario evaluation run (`mode`, `seed`, `fault`).
+- `GET /runs` — Run execution history.
+- `GET /runs/{id}` — Detailed run telemetry, assertions, and findings.
+- `GET /runs/{id}/events` — Event trace for run.
+- `POST /runs/{id}/cancel` — Cancel ongoing run.
+- `POST /suites/run` — Batch suite evaluation (`smoke`, `safety`, `full`, etc.).
+- `GET /baselines` — List established golden baseline snapshots.
+- `POST /baselines` — Capture run as golden baseline.
+- `GET /baselines/{id}` — Baseline details.
+- `POST /diff` — Regression diff between run and baseline.
+
+### 2.8 Next.js Evaluation Lab Console (`apps/web/src/app/evaluation/page.tsx`)
+- Persistent amber governance banner: `AUTONOMOUS DISPATCH: FALSE`, `ISOLATED SANDBOX`.
+- Navigation: Sidebar item "Evaluation Lab" linking to `/evaluation` with `ShieldCheck` icon.
+- Scenario Library with search filters, category tags, and Inspect Spec drawer.
+- Active Run Telemetry with 5 sub-tabs:
+  - **Findings**: Structured findings catalog with severity badges.
+  - **Assertions**: Machine-checkable golden expectations vs actual outcomes.
+  - **Subsystem Telemetry**: Safety rules, SVI score/band, Adaptive policy, Acoustic frames, Orchestration DAG, RAG citations, Case handoff, Follow-up continuity.
+  - **Latency Waterfall**: Per-stage millisecond timing visualization.
+  - **Baseline Diff**: Golden baseline regression detector with field-level diff table.
+- Suite Runner: Batch benchmark suites (`smoke`, `safety`, `multilingual`, `full`) with mode and seed controls.
+
+---
+
 ## 3. Verification & Testing
 
 ### 3.1 Backend Test Suite (Pytest)
-23 Phase 14 simulation unit and integration tests:
-- `test_simulation_metrics.py` (6 tests): Unicode NFC normalization, Wagner-Fischer WER/CER, token diff alignment, telephony noise distortion.
-- `test_simulation_catalog.py` (3 tests): 24 scenarios, 11 languages, 4 SVI bands, negation traps.
-- `test_simulation_harness.py` (3 tests): Smoke/Full benchmark runs, 100% safety recall, sub-1200ms latency SLA.
-- `test_simulation_sandbox.py` (2 tests): Training session lifecycle, multi-turn state machine, SOP scoring.
-- `test_simulation_api.py` (6 tests): REST endpoint responses, input validations, error handling.
-- `test_simulation_scenarios.py` (3 tests): Edge case triggers and SVI band verification.
+30 Phase 14 Evaluation Lab unit and integration tests:
+- `test_evaluation_schema.py` (6 tests): Domain models, enums, assertion and metrics contracts.
+- `test_evaluation_engine.py` (3 tests): Calibrated scenario registration, deterministic offline replay, fault injection.
+- `test_evaluation_safety.py` (3 tests): Imminent self-harm detection, active weapon violence, zero autonomous dispatch guarantee.
+- `test_evaluation_subsystems.py` (4 tests): Multilingual code-switching, adaptive hesitation pacing, acoustic packet loss, district analytics isolation.
+- `test_evaluation_baselines.py` (3 tests): Baseline capture, identical run comparison, safety regression detection.
+- `test_evaluation_api.py` (7 tests): All 12 evaluation REST endpoints and validation.
+- Plus 23 Phase 14 Simulation & Sandbox tests (`test_simulation_*.py`).
 
 **Full Repository Regression Result**:
 ```
-======================= 356 passed, 4 warnings in 7.97s =======================
+======================= 382 passed, 4 warnings in 8.87s =======================
 ```
 
-### 3.2 Frontend End-to-End Test Suite (Playwright)
-`apps/web/e2e/simulation-dashboard.spec.ts` (16 tests across Desktop Chrome and Mobile Chrome):
-- Direct navigation & governance banner
-- Top KPI summary cards (100% safety recall)
-- Benchmark results table rendering & pass badges
-- Risk band filter buttons (`ALL`, `CRITICAL`, `HIGH`, `MODERATE`, `LOW`)
-- Benchmark run trigger execution
-- Indic ASR & WER calculator with token diff visualization
-- Operator Training Sandbox drill selection and turn evaluation with SOP scorecard
-- Sidebar navigation link verification
+### 3.2 Frontend End-to-End Test Suites (Playwright)
+1. `apps/web/e2e/simulation-dashboard.spec.ts` (16 tests across Desktop and Mobile Chrome):
+   - Benchmark runner, Indic WER/CER calculator, Operator training sandbox.
+2. `apps/web/e2e/evaluation-lab.spec.ts` (10 tests across Desktop and Mobile Chrome):
+   - Governance warning banner & isolation guarantees.
+   - Sidebar navigation to `/evaluation`.
+   - Scenario library, category filters & Inspect Spec drawer.
+   - End-to-end scenario replay, assertions, subsystem telemetry, latency waterfall & baseline diff.
+   - Suite runner batch execution controls.
 
 **Playwright Result**:
 ```
-Running 16 tests using 8 workers
-  16 passed (7.7s)
+Running 10 tests using 8 workers
+  10 passed (8.8s)
 ```
 
 ---
 
 ## 4. Operational Sign-off
 
-Phase 14 completes all technical and governance milestones:
-- [x] Synthetic scenario isolation strictly maintained (`SIM-*` prefix, no live Exotel carrier line dialing).
-- [x] 11 Indic languages covered with Unicode NFC normalization and Wagner-Fischer WER/CER metrics.
-- [x] Deterministic safety recall verified at 100% on high-threat triggers with zero false negatives.
-- [x] Sub-1200ms P95 triage latency SLA verified across all 24 scenarios.
-- [x] Operator training sandbox operational with real-time SOP scoring rubric.
-- [x] Full test suite (356 backend tests, 16 Playwright E2E tests) passing cleanly.
+Phase 14 completes all technical, architectural, and governance milestones:
+- [x] Synthetic scenario isolation strictly maintained (`SIM-*` prefix, `SYNTHETIC_EVALUATION` markers, no live Exotel carrier line dialing).
+- [x] Zero autonomous dispatch strictly enforced (`autonomous_dispatch = false`).
+- [x] Mandatory human supervision enforced on all High/Critical risk evaluations (`human_review_required = true`).
+- [x] Calibrated benchmark corpus (19 scenarios across categories A-Q) and simulation catalog (24 scenarios across 11 Indic languages).
+- [x] Machine-checkable golden expectations and automated assertion engine operational.
+- [x] Fault injection interceptor for subsystem timeouts, provider outages, and delays.
+- [x] Baseline snapshot capture and automated regression diff detector operational.
+- [x] Evaluation Lab web console (`/evaluation`) and Simulation Sandbox (`/simulation`) fully interactive and responsive across desktop and mobile.
+- [x] Full test suite (382 backend tests, 26 Playwright E2E tests) passing cleanly with zero failures.
 - [x] Phase 14 marked COMPLETE in repository roadmap. Phase 15 (Security & Privacy Hardening) is Next.
+

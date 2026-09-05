@@ -471,7 +471,7 @@ test.describe("Phase 14 — Scenario Simulation Engine & Operator Training Sandb
     await page.goto("/");
     const simLink = page.getByRole("link", { name: /Simulation & Sandbox/i });
     await expect(simLink).toBeVisible();
-    await expect(page.getByText("Phase 14")).toBeVisible();
+    await expect(simLink.getByText("Phase 14")).toBeVisible();
     await simLink.click();
     await expect(page).toHaveURL(/.*simulation/);
   });

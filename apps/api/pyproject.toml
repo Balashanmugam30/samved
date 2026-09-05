@@ -1,6 +1,6 @@
 [project]
 name = "samved-api"
-version = "1.0.0-sih2026"
+version = "1.0.0"
 description = "SAMVED FastAPI Backend: AI-assisted victim triage and response intelligence for NHAA 14566"
 readme = "README.md"
 requires-python = ">=3.11"

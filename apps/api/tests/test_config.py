@@ -4,7 +4,7 @@ from app.core.config import Settings
 def test_default_settings():
     settings = Settings()
     assert settings.APP_NAME == "samved-api"
-    assert settings.APP_VERSION == "0.1.0"
+    assert settings.APP_VERSION == "1.0.0-sih2026"
     assert settings.APP_MODE == "DEV"
     assert settings.is_dev() is True
     assert settings.is_live() is False

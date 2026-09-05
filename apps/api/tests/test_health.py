@@ -30,10 +30,10 @@ def test_version_info(client):
     assert response.status_code == 200
     data = response.json()
     assert data["service"] == "samved-api"
-    assert data["version"] == "0.1.0"
+    assert data["version"] == "1.0.0-sih2026"
     assert data["mode"] == "DEV"
     assert data["problem_statement"] == "26093"
-    assert "Phase 2" in data["phase"]
+    assert "Phase 16" in data["phase"]
 
 
 def test_v1_prefixed_endpoints(client):

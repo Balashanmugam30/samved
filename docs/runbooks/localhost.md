@@ -725,3 +725,61 @@ curl -X POST http://localhost:8000/v1/security/pii/redact \
    - Click **Verify SHA-256 Chain** to execute cryptographic integrity verification.
    - Filter entries by actor, action, district, or status (`ALLOWED`, `MUTATED`, `DENIED`).
    - Click any row to expand the full JSON event payload and cryptographic hash hashes.
+
+---
+
+## 14. Phase 16: Deployment, Reliability & SIH Finalization
+
+### 14.1 Verifying Kubernetes Probes & Reliability Endpoints
+```bash
+# Liveness Probe (process responsive)
+curl http://localhost:8000/healthz
+
+# Readiness Probe (dependencies and configuration)
+curl http://localhost:8000/ready
+
+# Startup Probe (config validation)
+curl http://localhost:8000/health/startup
+
+# Release Version Information
+curl http://localhost:8000/version
+```
+
+### 14.2 Operations & Circuit Breaker Telemetry
+```bash
+# Get comprehensive operational status
+curl http://localhost:8000/v1/operations/status
+
+# List all circuit breakers and their trip states
+curl http://localhost:8000/v1/operations/circuits
+
+# Manually reset all circuit breakers to CLOSED
+curl -X POST http://localhost:8000/v1/operations/circuits/reset-all
+```
+
+### 14.3 SIH Presentation Demo Mode
+```bash
+# Inspect demo status and safety boundaries
+curl http://localhost:8000/v1/demo/status
+
+# Fetch flagship Tamil/English scenario specification
+curl http://localhost:8000/v1/demo/flagship
+
+# Replay flagship scenario through all 8 pipeline stages
+curl -X POST http://localhost:8000/v1/demo/flagship/replay
+
+# Reset demo environment back to pristine state
+curl -X POST http://localhost:8000/v1/demo/reset
+```
+
+### 14.4 Web Console Verification
+1. **SIH Demo Hub** (`http://localhost:3000/demo`):
+   - Confirm prominent **SIH DEMO / SYNTHETIC ENVIRONMENT** banner.
+   - Click **Replay Flagship Scenario** to execute live 8-stage pipeline.
+   - Verify SVI Score 88 (CRITICAL), Protocol `P0_EMERGENCY_DISPATCH_ASSIST`, and 3-point warm transfer brief.
+   - Expand stages to inspect verified assertions and stage payloads.
+   - Click **Reset Environment** to restore pristine evaluation state.
+2. **Operations & Reliability Console** (`http://localhost:3000/operations`):
+   - Inspect Service Uptime, Version `1.0.0-sih2026`, Telephony Sessions, and WebSocket Gateway status.
+   - Review 6 active Circuit Breakers (`sarvam-stt`, `sarvam-tts`, `gemini-llm`, `exotel-telephony`, `database`, `redis`).
+   - Click **Reset All Circuit Breakers** and verify instantaneous state restoration.

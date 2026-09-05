@@ -1,6 +1,6 @@
 {
   "name": "samved-monorepo",
-  "version": "0.1.0",
+  "version": "1.0.0-sih2026",
   "private": true,
   "description": "SAMVED: AI-assisted multilingual victim triage and response intelligence for NHAA 14566",
   "scripts": {

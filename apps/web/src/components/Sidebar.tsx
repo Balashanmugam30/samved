@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   FileCheck,
   LifeBuoy,
+  Activity,
+  Sparkles,
 } from "lucide-react";
 
 interface NavItem {
@@ -29,6 +31,18 @@ const navItems: NavItem[] = [
     href: "/",
     icon: LayoutDashboard,
     activeInPhase0: true,
+  },
+  {
+    label: "SIH Demo Hub",
+    href: "/demo",
+    icon: Sparkles,
+    phaseBadge: "SIH 2026",
+  },
+  {
+    label: "Operations & Reliability",
+    href: "/operations",
+    icon: Activity,
+    phaseBadge: "Phase 16",
   },
   {
     label: "Live Telephony",

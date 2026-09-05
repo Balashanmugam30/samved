@@ -32,6 +32,7 @@ When a victim, concerned family member, or at-risk citizen calls the national he
 10. **District Intelligence & Operational Analytics**: Provides aggregated, privacy-preserving operational analytics for helpline capacity planners without exposing individual caller data, enforcing K-Anonymity ($k \ge 10$), small-cell suppression, and zero predictive policing.
 11. **Scenario Simulation Engine & Operator Training Sandbox**: Continuous automated benchmarking across 24 calibrated synthetic scenarios in 11 Indic languages, Wagner-Fischer Indic ASR WER/CER evaluation, deterministic 100% safety recall verification ($\text{Recall} = 1.00$), and an interactive tele-counselor training simulator with real-time SOP scoring.
 12. **Security, Privacy & Governance Hardening**: Enterprise least-privilege RBAC with 5 granular personas, object-level scope & district isolation (IDOR protection), synthetic simulation quarantine, Indian entity PII redaction pipeline (Aadhaar, PAN, phone numbers, emails, bank accounts), SHA-256 chained tamper-evident audit ledger, adaptive rate limiting, 64KB WebSocket frame bounds, security headers middleware, and data retention lifecycle management.
+13. **Deployment, Reliability & SIH Finalization**: Dedicated SIH 2026 Presentation Demo Hub (`/demo`) with 1-click Tamil/English code-switching flagship scenario replay, Operations & Reliability Console (`/operations`), in-memory thread-safe circuit breakers across all 6 external providers, Kubernetes probes (`/healthz`, `/ready`, `/health/startup`), failure mode degradation runbooks, and 629 automated tests passing with zero regressions.
 
 ---
 
@@ -338,8 +339,15 @@ pnpm dev:web
 | **Baseline Snapshot Capture & Cryptographic Telemetry Hashing** | ✅ | Phase 14 |
 | **Automated Regression Diff & Structured Findings Detector** | ✅ | Phase 14 |
 | **Evaluation Lab Web Console (`/evaluation`) & Suite Runner** | ✅ | Phase 14 |
-| **Evaluation REST APIs (`/v1/evaluation/...`, 12 Endpoints)** | ✅ | Phase 14 |
-| **Security & Privacy Hardening** | ⏳ Next | Phase 15 |
+| **Security, Privacy & Governance Hardening** | ✅ | Phase 15 |
+| **Indian Entity PII Redaction Pipeline (Aadhaar, PAN, Phone)** | ✅ | Phase 15 |
+| **Cryptographically Chained Audit Trail (SHA-256 Merkle Ledger)** | ✅ | Phase 15 |
+| **5-Role Enterprise RBAC & Object-Level IDOR Protection** | ✅ | Phase 15 |
+| **Deployment, Reliability & SIH Finalization** | ✅ | Phase 16 |
+| **Thread-Safe Circuit Breakers Across 6 External Providers** | ✅ | Phase 16 |
+| **Kubernetes Health Probes (/healthz, /ready, /health/startup)** | ✅ | Phase 16 |
+| **Operations & Reliability Console (`/operations`)** | ✅ | Phase 16 |
+| **SIH 2026 Presentation Demo Hub (`/demo`) & 8-Stage Flagship Replay** | ✅ | Phase 16 |
 
 ---
 

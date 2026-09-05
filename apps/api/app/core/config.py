@@ -16,9 +16,10 @@ class Settings(BaseSettings):
 
     # Core Application Settings
     APP_NAME: str = "samved-api"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = "1.0.0-sih2026"
     APP_ENV: AppEnv = "development"
     APP_MODE: AppMode = "DEV"
+    DEMO_MODE_ENABLED: bool = True
 
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
@@ -92,6 +93,43 @@ class Settings(BaseSettings):
 
     def is_exotel_live_ready(self) -> bool:
         return self.is_live() and self.EXOTEL_ENABLED and self.has_exotel_credentials()
+
+    def get_safe_diagnostics(self) -> dict:
+        """Returns safe operational configuration without revealing sensitive keys."""
+        return {
+            "app_name": self.APP_NAME,
+            "app_version": self.APP_VERSION,
+            "app_env": self.APP_ENV,
+            "app_mode": self.APP_MODE,
+            "demo_mode_enabled": self.DEMO_MODE_ENABLED,
+            "log_level": self.LOG_LEVEL,
+            "structured_logging": self.ENABLE_STRUCTURED_JSON_LOGS,
+            "has_database": bool(self.DATABASE_URL),
+            "has_redis": bool(self.REDIS_URL),
+            "has_exotel": self.has_exotel_credentials(),
+            "has_sarvam": bool(self.SARVAM_API_KEY),
+            "has_gemini": bool(self.GEMINI_API_KEY),
+            "cors_origins_count": len(self.CORS_ORIGINS),
+        }
+
+    def validate_configuration(self) -> dict:
+        """Verifies environment consistency and detects missing dependencies."""
+        issues = []
+        if self.is_live():
+            if not self.DATABASE_URL:
+                issues.append("DATABASE_URL is required in LIVE mode.")
+            if not self.has_exotel_credentials():
+                issues.append("Exotel credentials required in LIVE mode.")
+            if not self.SARVAM_API_KEY:
+                issues.append("SARVAM_API_KEY required in LIVE mode for Indian STT/TTS.")
+            if not self.GEMINI_API_KEY:
+                issues.append("GEMINI_API_KEY required in LIVE mode.")
+
+        return {
+            "valid": len(issues) == 0,
+            "mode": self.APP_MODE,
+            "issues": issues,
+        }
 
 
 @lru_cache()

@@ -39,6 +39,10 @@ jobs:
       - name: Run Pytest Suite
         run: uv run pytest -v
 
+      - name: Validate Docker Compose Configuration
+        run: docker compose config
+        working-directory: ../..
+
   frontend-checks:
     name: Frontend Type Check & Build
     runs-on: ubuntu-latest

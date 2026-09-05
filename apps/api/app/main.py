@@ -22,11 +22,35 @@ logger = setup_logging(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    diag = settings.get_safe_diagnostics()
     logger.info(
         f"Starting {settings.APP_NAME} v{settings.APP_VERSION} [ENV: {settings.APP_ENV}, MODE: {settings.APP_MODE}]"
     )
+    logger.info(f"Startup Configuration Diagnostics: {diag}")
+
+    # Validate configuration
+    val_result = settings.validate_configuration()
+    if not val_result["valid"]:
+        logger.warning(f"Configuration issues detected: {val_result['issues']}")
+
+    # Pre-seed demo datasets if demo mode is enabled
+    if settings.DEMO_MODE_ENABLED:
+        try:
+            from app.demo.service import get_demo_service
+            demo_svc = get_demo_service()
+            demo_svc.ensure_seeded()
+            logger.info("SIH Demo dataset pre-seeded successfully.")
+        except Exception as e:
+            logger.warning(f"Demo pre-seeding deferred: {e}")
+
     yield
+
     logger.info(f"Shutting down {settings.APP_NAME}")
+    try:
+        from app.core.shutdown import get_shutdown_manager
+        await get_shutdown_manager().execute_shutdown()
+    except Exception as e:
+        logger.error(f"Error during graceful shutdown: {e}")
 
 
 app = FastAPI(

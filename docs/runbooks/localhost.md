@@ -223,3 +223,53 @@ curl -X POST http://localhost:8000/v1/orchestration/calls/CALL_ID/refresh
 5. Inspect **Event Timeline**:
    - Click `ORCHESTRATION` filter pill to view `ORCHESTRATION_STARTED`, `ORCHESTRATION_COMPLETED`, and `OPERATOR_BRIEFING_GENERATED` events.
 
+---
+
+## 7. Verifying Phase 10 Legal / Policy RAG
+
+### 7.1 Subsystem Health & Registered Sources
+```bash
+# Verify knowledge subsystem status
+curl http://localhost:8000/v1/knowledge/status
+
+# List registered authoritative sources and authority tiers
+curl http://localhost:8000/v1/knowledge/sources
+```
+
+### 7.2 Governed Search & Citation Verification
+```bash
+# Perform governed knowledge search
+curl -X POST http://localhost:8000/v1/knowledge/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "scholarship eligibility criteria",
+    "jurisdiction": "TAMIL_NADU",
+    "language": "en-IN",
+    "effective_only": true,
+    "max_results": 5
+  }'
+
+# Inspect cryptographic citation provenance
+curl http://localhost:8000/v1/knowledge/citations/CITATION_ID
+```
+
+### 7.3 Workstation Knowledge Support Panel UI Testing
+1. Navigate to `http://localhost:3000/calls` and select an active call.
+2. Inspect the **Knowledge Support Panel** (`data-testid="knowledge-panel"`):
+   - Enter a policy query in `data-testid="knowledge-query-input"` (e.g. `scholarship eligibility criteria`).
+   - Filter by jurisdiction (`TAMIL_NADU` or `CENTRAL`) and language.
+   - Click **Retrieve Guidance** (`data-testid="knowledge-search-button"`).
+3. Inspect **Authoritative Source Cards**:
+   - Verify Tier badge (Tier 1–4), publisher, jurisdiction, status, section, effective date, and verbatim excerpt.
+   - Click **Official Source** external link to verify source documentation.
+4. Inspect **AI Synthesized Summary**:
+   - Verify claims reference verbatim citation tags (e.g. `[cit:...]`).
+   - Click **Save to Notes** (`data-testid="save-knowledge-note-button"`):
+     - Confirms note is added to the case record with structured `citation_ref`.
+5. Test Conflict and Stale Banners:
+   - Query conflicting schemes to view `SOURCE CONFLICT DETECTED` (`data-testid="knowledge-conflict-banner"`).
+   - Toggle off `Current Only` and query expired policies to view `SOURCE MAY BE OUTDATED` (`data-testid="knowledge-stale-banner"`).
+6. Inspect **Event Timeline**:
+   - Click `KNOWLEDGE` filter pill to isolate `KNOWLEDGE_SEARCH_STARTED` and completion events.
+
+

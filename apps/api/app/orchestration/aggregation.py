@@ -66,7 +66,14 @@ class ContextAggregator:
             support_info = support_resp.result
             evidence_refs.extend(support_resp.evidence_refs)
 
-        # 5. Conversation facts (Advisory only)
+        # 5. Knowledge retrieval info (Authoritative legal/policy context)
+        knowledge_resp = responses.get("knowledge_retrieval_agent")
+        knowledge_info: Dict[str, Any] = {}
+        if knowledge_resp and knowledge_resp.status == AgentStatus.SUCCESS:
+            knowledge_info = knowledge_resp.result
+            evidence_refs.extend(knowledge_resp.evidence_refs)
+
+        # 6. Conversation facts (Advisory only)
         conv_resp = responses.get("conversation_context_agent")
         if conv_resp and conv_resp.status == AgentStatus.SUCCESS:
             conv_result = conv_resp.result
@@ -100,6 +107,7 @@ class ContextAggregator:
             safety_info=safety_info,
             acoustic_info=acoustic_info,
             support_info=support_info,
+            knowledge_info=knowledge_info,
             evidence_refs=dedup_evidence,
             conflict_resolutions=conflict_resolutions,
         )

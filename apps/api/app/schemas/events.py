@@ -72,6 +72,15 @@ class EventType(str, Enum):
     AGENT_CANCELLED = "AGENT_CANCELLED"
     OPERATOR_BRIEFING_GENERATED = "OPERATOR_BRIEFING_GENERATED"
 
+    # Legal / Policy Knowledge RAG (Phase 10)
+    KNOWLEDGE_SEARCH_STARTED = "KNOWLEDGE_SEARCH_STARTED"
+    KNOWLEDGE_SEARCH_COMPLETED = "KNOWLEDGE_SEARCH_COMPLETED"
+    KNOWLEDGE_SEARCH_FAILED = "KNOWLEDGE_SEARCH_FAILED"
+    KNOWLEDGE_SOURCE_SELECTED = "KNOWLEDGE_SOURCE_SELECTED"
+    KNOWLEDGE_SOURCE_CONFLICT = "KNOWLEDGE_SOURCE_CONFLICT"
+    KNOWLEDGE_REVIEW_RECOMMENDED = "KNOWLEDGE_REVIEW_RECOMMENDED"
+    KNOWLEDGE_ANSWER_BLOCKED = "KNOWLEDGE_ANSWER_BLOCKED"
+
     # Case & follow-up
     CASE_CREATED = "CASE_CREATED"
     FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED"
@@ -331,5 +340,105 @@ class OrchestrationResultPayload(BaseModel):
     completed_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+
+
+# ==========================================
+# Phase 10: Legal / Policy Knowledge RAG Models
+# ==========================================
+
+class AuthorityTier(int, Enum):
+    TIER_1 = 1  # Official GoI / State Official Sources, Statutory Gazettes
+    TIER_2 = 2  # Official Courts, Tribunals, Statutory Commissions
+    TIER_3 = 3  # Approved Institutional Partners & Shelters
+    TIER_4 = 4  # Secondary References & Operational SOPs
+
+
+class DocumentStatus(str, Enum):
+    DISCOVERED = "DISCOVERED"
+    INGESTED = "INGESTED"
+    PARSED = "PARSED"
+    VALIDATED = "VALIDATED"
+    INDEXED = "INDEXED"
+    ACTIVE = "ACTIVE"
+    SUPERSEDED = "SUPERSEDED"
+    RETIRED = "RETIRED"
+    REJECTED = "REJECTED"
+
+
+class FreshnessStatus(str, Enum):
+    CURRENT = "CURRENT"
+    STALE = "STALE"
+    EXPIRED = "EXPIRED"
+    UNKNOWN = "UNKNOWN"
+
+
+class KnowledgeJurisdiction(str, Enum):
+    INDIA = "INDIA"
+    TAMIL_NADU = "TAMIL_NADU"
+    CENTRAL_GOVERNMENT = "CENTRAL_GOVERNMENT"
+    JURISDICTION_UNCERTAIN = "JURISDICTION_UNCERTAIN"
+
+
+class CitationMetadata(BaseModel):
+    citation_id: str
+    document_id: str
+    document_title: str
+    publisher: str
+    version: str
+    section_page: str
+    effective_date: str
+    source_url: str
+    retrieved_at: str
+    excerpt: str
+    authority_tier: int
+    jurisdiction: str
+
+
+class KnowledgeItemPayload(BaseModel):
+    document_id: str
+    version: str
+    title: str
+    publisher: str
+    jurisdiction: str
+    source_url: str
+    chunk_id: str
+    excerpt: str
+    relevance: float
+    authority_tier: int
+    effective_status: str
+    source_date: str
+    retrieved_at: str
+    citation: CitationMetadata
+
+
+class KnowledgeQueryPayload(BaseModel):
+    query: str
+    language: Optional[str] = None
+    jurisdiction: Optional[str] = None
+    topic: Optional[str] = None
+    source_tiers: Optional[List[int]] = None
+    as_of_date: Optional[str] = None
+    effective_only: bool = True
+    max_results: int = 5
+
+
+class KnowledgeResultPayload(BaseModel):
+    query_id: str
+    call_id: Optional[str] = None
+    query: str
+    status: str
+    total_found: int
+    results: List[KnowledgeItemPayload] = Field(default_factory=list)
+    citations: List[CitationMetadata] = Field(default_factory=list)
+    ai_summary: Optional[str] = None
+    requires_human_review: bool = False
+    review_reasons: List[str] = Field(default_factory=list)
+    conflict_detected: bool = False
+    conflicting_sources: List[Dict[str, Any]] = Field(default_factory=list)
+    search_latency_ms: float = 0.0
+    executed_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
 
 

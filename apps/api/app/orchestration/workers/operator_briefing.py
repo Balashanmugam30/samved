@@ -74,7 +74,7 @@ class OperatorBriefingAgent(BaseAgentWorker):
         pacing = adaptive_data.get("pacing", "standard")
         adaptive_rec = f"Action: {recommended_action} (Recommended pacing: {pacing})."
 
-        # 5. Key Facts
+        # 5. Key Facts & Knowledge Grounding
         key_facts: List[str] = []
         if isinstance(conversation_data, dict):
             raw_facts = conversation_data.get("key_facts", [])
@@ -85,12 +85,25 @@ class OperatorBriefingAgent(BaseAgentWorker):
             if transcript:
                 key_facts.append(f"Recent statement: {transcript[:80]}...")
 
+        # Knowledge Context Integration (Phase 10)
+        knowledge_data = ctx.get("knowledge_info") or ctx.get("knowledge_retrieval_agent") or {}
+        if isinstance(knowledge_data, dict):
+            citations = knowledge_data.get("citations", [])
+            if citations and isinstance(citations, list) and len(citations) > 0:
+                top_cit = citations[0]
+                if isinstance(top_cit, dict):
+                    doc_title = top_cit.get("document_title", "Policy Source")
+                    sec = top_cit.get("section_page", "Guidance")
+                    key_facts.append(f"Authoritative Policy [{doc_title} - {sec}] cited.")
+
         # Evidence references
         evidence_refs: List[str] = [f"turn:{request.turn_id}"]
         if triggered_rules:
             evidence_refs.append("safety:triggered_rules")
         if biomarkers:
             evidence_refs.append("acoustic:biomarkers")
+        if isinstance(knowledge_data, dict) and knowledge_data.get("citations"):
+            evidence_refs.append("knowledge:citations")
 
         result: Dict[str, Any] = {
             "safety_summary": safety_summary,

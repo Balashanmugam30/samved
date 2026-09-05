@@ -203,16 +203,17 @@ pnpm dev:web
 
 | Task | Command | Description |
 | :--- | :--- | :--- |
-| **Backend Tests** | `uv --directory apps/api run pytest -v` | Runs 158 unit, integration, safety, SVI, acoustic, adaptive, and operator tests |
+| **Backend Tests** | `uv --directory apps/api run pytest -v` | Runs 217 unit, integration, safety, SVI, acoustic, adaptive, operator, orchestration, and knowledge RAG tests |
 | **Contract Flow Test** | `uv --directory apps/api run pytest tests/test_contract_flow.py -v` | Validates end-to-end event schema transport |
-| **Operator Tests** | `uv --directory apps/api run pytest tests/test_operator_*.py -v` | Validates workstation actions, handoff lifecycle, notes, and audit logging |
+| **Knowledge RAG Tests**| `uv --directory apps/api run pytest tests/test_knowledge_*.py -v` | Validates governed retrieval, versioning, chunking, citations, conflicts, and SSRF defenses |
+| **Operator Tests** | `uv --directory apps/api run pytest tests/test_operator_*.py -v` | Validates workstation actions, handoff lifecycle, notes with citations, and audit logging |
 | **Safety Tests** | `uv --directory apps/api run pytest tests/test_safety_*.py -v` | Validates deterministic safety engine rules and concurrency |
 | **SVI Tests** | `uv --directory apps/api run pytest tests/test_svi_*.py -v` | Validates explainable Stress Vulnerability Index and bounds |
 | **Acoustic Tests** | `uv --directory apps/api run pytest tests/test_acoustic_*.py -v` | Validates paralinguistic acoustic signal extraction |
 | **Adaptive Tests** | `uv --directory apps/api run pytest tests/test_adaptive_*.py -v` | Validates deterministic conversational policy and overrides |
 | **Frontend Type Check** | `pnpm type-check` | Type-checks all TypeScript packages & web app |
 | **Frontend Build** | `pnpm build` | Compiles production Next.js web application |
-| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 60 browser E2E tests (Desktop + Mobile Chrome across all phases) |
+| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 84 browser E2E tests (Desktop + Mobile Chrome across all phases) |
 | **Telephony Diagnostics** | `curl http://localhost:8000/v1/telephony/doctor` | Safe credential and public ingress check without secrets |
 | **Docker Compose** | `docker compose up -d` | Starts PostgreSQL, Redis, API, and Web containers |
 
@@ -226,7 +227,7 @@ pnpm dev:web
 
 ---
 
-## 12. Implementation Status (Phase 9 Complete)
+## 12. Implementation Status (Phase 10 Complete)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -279,7 +280,14 @@ pnpm dev:web
 | **Specialized AI Worker Taxonomy (6 Bounded Agents & Phase 10 Stub)** | ✅ | Phase 9 |
 | **Operator Briefing Card & Realtime Multi-Agent Oversight Panel** | ✅ | Phase 9 |
 | **Orchestration REST APIs (`/v1/orchestration/...`) & Audit Trail** | ✅ | Phase 9 |
-| **Statutory & Scheme RAG (NDPS / IRCA)** | ⏳ | Phase 10 |
+| **Legal / Policy RAG Subsystem (Tier 1–4 Governed Retrieval)** | ✅ | Phase 10 |
+| **Multi-Version Document Tree & Temporal Applicability (`as_of_date`)** | ✅ | Phase 10 |
+| **Context-Preserving Hierarchical Chunking & Qualifier Retention** | ✅ | Phase 10 |
+| **Cryptographic Citation Integrity & Verbatim Hash Verification** | ✅ | Phase 10 |
+| **Deterministic Conflict Detection & Statutory Precedence** | ✅ | Phase 10 |
+| **Prompt Injection Delimiters (`<retrieved_source_data>`) & SSRF Defense** | ✅ | Phase 10 |
+| **Operator Knowledge Support Panel, Conflict/Stale Banners & Note Ref** | ✅ | Phase 10 |
+| **Knowledge REST APIs (`/v1/knowledge/...`) & Audit Trail** | ✅ | Phase 10 |
 | **Longitudinal Case Intelligence** | ⏳ | Phase 11 |
 
 ---

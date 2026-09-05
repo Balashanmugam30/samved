@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS operator_notes (
     operator_id VARCHAR(36) DEFAULT 'operator',
     category VARCHAR(50) NOT NULL DEFAULT 'GENERAL',
     text TEXT NOT NULL,
+    citation_ref VARCHAR(255),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -192,6 +193,118 @@ CREATE INDEX IF NOT EXISTS idx_orchestration_runs_call_id ON orchestration_runs(
 CREATE INDEX IF NOT EXISTS idx_agent_executions_call_id ON agent_executions(call_id);
 CREATE INDEX IF NOT EXISTS idx_agent_executions_run_id ON agent_executions(run_id);
 
+-- 10. Legal / Policy Knowledge RAG (Phase 10)
+CREATE TABLE IF NOT EXISTS knowledge_sources (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    publisher VARCHAR(255) NOT NULL,
+    base_url VARCHAR(500) NOT NULL,
+    authority_tier INT NOT NULL DEFAULT 1,
+    verified BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_documents (
+    id VARCHAR(64) PRIMARY KEY,
+    title VARCHAR(500) NOT NULL,
+    publisher VARCHAR(255) NOT NULL,
+    source_url VARCHAR(1000) NOT NULL,
+    source_type VARCHAR(50) DEFAULT 'MARKDOWN',
+    jurisdiction VARCHAR(50) NOT NULL DEFAULT 'INDIA',
+    language VARCHAR(20) DEFAULT 'en-IN',
+    topic VARCHAR(50) DEFAULT 'GOVERNMENT_SCHEME',
+    issued_at TIMESTAMPTZ,
+    effective_from DATE NOT NULL,
+    effective_to DATE,
+    current_version VARCHAR(50) DEFAULT '1.0',
+    status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+    authority_tier INT NOT NULL DEFAULT 1,
+    checksum VARCHAR(64) NOT NULL,
+    content_hash VARCHAR(64) NOT NULL,
+    license_notes TEXT,
+    verified_source BOOLEAN DEFAULT TRUE,
+    verification_method VARCHAR(100) DEFAULT 'checksum_match',
+    retrieved_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_document_versions (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL REFERENCES knowledge_documents(id),
+    version_number VARCHAR(50) NOT NULL,
+    effective_from DATE NOT NULL,
+    effective_to DATE,
+    status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+    superseded_by VARCHAR(50),
+    supersedes VARCHAR(50),
+    checksum VARCHAR(64) NOT NULL,
+    content_hash VARCHAR(64) NOT NULL,
+    retrieved_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL REFERENCES knowledge_documents(id),
+    version_number VARCHAR(50) NOT NULL,
+    heading_path JSONB DEFAULT '[]'::jsonb,
+    section_page VARCHAR(255),
+    paragraph_range VARCHAR(100),
+    text TEXT NOT NULL,
+    language VARCHAR(20) DEFAULT 'en-IN',
+    jurisdiction VARCHAR(50) DEFAULT 'INDIA',
+    effective_from DATE NOT NULL,
+    effective_to DATE,
+    qualifiers JSONB DEFAULT '[]'::jsonb,
+    content_hash VARCHAR(64) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_citations (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL REFERENCES knowledge_documents(id),
+    document_title VARCHAR(500) NOT NULL,
+    publisher VARCHAR(255) NOT NULL,
+    version_number VARCHAR(50) NOT NULL,
+    section_page VARCHAR(255) NOT NULL,
+    effective_date VARCHAR(100) NOT NULL,
+    source_url VARCHAR(1000) NOT NULL,
+    excerpt TEXT NOT NULL,
+    authority_tier INT NOT NULL,
+    jurisdiction VARCHAR(50) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_retrieval_events (
+    id VARCHAR(64) PRIMARY KEY,
+    call_id VARCHAR(36) REFERENCES calls(id),
+    query TEXT NOT NULL,
+    jurisdiction VARCHAR(50),
+    language VARCHAR(20),
+    as_of_date DATE,
+    status VARCHAR(50) NOT NULL,
+    total_found INT DEFAULT 0,
+    selected_citations JSONB DEFAULT '[]'::jsonb,
+    conflict_detected BOOLEAN DEFAULT FALSE,
+    requires_human_review BOOLEAN DEFAULT FALSE,
+    search_latency_ms FLOAT DEFAULT 0.0,
+    executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_ingestion_audit (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL,
+    version_number VARCHAR(50) NOT NULL,
+    source_url VARCHAR(1000) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    content_hash VARCHAR(64) NOT NULL,
+    details JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_documents_jurisdiction ON knowledge_documents(jurisdiction);
+CREATE INDEX IF NOT EXISTS idx_knowledge_documents_status ON knowledge_documents(status);
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc_id ON knowledge_chunks(document_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_retrieval_call_id ON knowledge_retrieval_events(call_id);
+
 -- Seed baseline roles
 INSERT INTO roles (id, name, permissions) VALUES
     ('role-admin', 'ADMIN', '["*"]'::jsonb),
@@ -199,4 +312,5 @@ INSERT INTO roles (id, name, permissions) VALUES
     ('role-operator', 'OPERATOR', '["cases:read", "cases:write", "calls:handle"]'::jsonb),
     ('role-auditor', 'AUDITOR', '["audit:read", "reports:read"]'::jsonb)
 ON CONFLICT (name) DO NOTHING;
+
 

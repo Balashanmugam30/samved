@@ -2,6 +2,7 @@
 
 from app.orchestration.workers.acoustic_context import AcousticContextAgent
 from app.orchestration.workers.conversation_context import ConversationContextAgent
+from app.orchestration.workers.knowledge_retrieval import KnowledgeRetrievalAgent
 from app.orchestration.workers.language_context import LanguageContextAgent
 from app.orchestration.workers.operator_briefing import OperatorBriefingAgent
 from app.orchestration.workers.safety_context import SafetyContextAgent
@@ -14,4 +15,6 @@ __all__ = [
     "ConversationContextAgent",
     "OperatorBriefingAgent",
     "SupportOptionsAgent",
+    "KnowledgeRetrievalAgent",
 ]
+

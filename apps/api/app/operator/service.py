@@ -407,8 +407,9 @@ class OperatorService:
         operator_id: str = "operator",
         category: OperatorNoteCategory = OperatorNoteCategory.GENERAL,
         text: str = "",
+        citation_ref: Optional[str] = None,
     ) -> OperatorNote:
-        """Adds a structured operator note to the call."""
+        """Adds a structured operator note to the call with optional citation provenance."""
         note = OperatorNote(
             note_id=str(uuid.uuid4()),
             call_id=call_id,
@@ -417,6 +418,7 @@ class OperatorService:
             text=text,
             timestamp=datetime.now(timezone.utc).isoformat(),
             is_structured=True,
+            citation_ref=citation_ref,
         )
 
         async with self._lock:
@@ -429,7 +431,7 @@ class OperatorService:
             action=OperatorActionType.ADD_NOTE,
             actor_id=operator_id,
             summary=f"Note added [{category.value}]: {text[:40]}...",
-            details={"note_id": note.note_id, "category": category.value},
+            details={"note_id": note.note_id, "category": category.value, "citation_ref": citation_ref},
         )
 
         await self._broadcast_event(

@@ -72,6 +72,15 @@ export enum EventType {
   AGENT_CANCELLED = "AGENT_CANCELLED",
   OPERATOR_BRIEFING_GENERATED = "OPERATOR_BRIEFING_GENERATED",
 
+  // Legal / Policy Knowledge RAG (Phase 10)
+  KNOWLEDGE_SEARCH_STARTED = "KNOWLEDGE_SEARCH_STARTED",
+  KNOWLEDGE_SEARCH_COMPLETED = "KNOWLEDGE_SEARCH_COMPLETED",
+  KNOWLEDGE_SEARCH_FAILED = "KNOWLEDGE_SEARCH_FAILED",
+  KNOWLEDGE_SOURCE_SELECTED = "KNOWLEDGE_SOURCE_SELECTED",
+  KNOWLEDGE_SOURCE_CONFLICT = "KNOWLEDGE_SOURCE_CONFLICT",
+  KNOWLEDGE_REVIEW_RECOMMENDED = "KNOWLEDGE_REVIEW_RECOMMENDED",
+  KNOWLEDGE_ANSWER_BLOCKED = "KNOWLEDGE_ANSWER_BLOCKED",
+
   // Case & follow-up
   CASE_CREATED = "CASE_CREATED",
   FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED",
@@ -369,5 +378,106 @@ export interface OrchestrationResultPayload {
   total_latency_ms: number;
   warnings?: string[];
   completed_at: string;
+}
+
+// ==========================================
+// Phase 10: Legal / Policy Knowledge RAG Enums & Contracts
+// ==========================================
+
+export enum AuthorityTier {
+  TIER_1 = 1, // Official GoI / State Official Sources, Statutory Gazettes
+  TIER_2 = 2, // Official Courts, Tribunals, Statutory Commissions
+  TIER_3 = 3, // Approved Institutional Partners & Shelters
+  TIER_4 = 4, // Secondary References & Operational SOPs
+}
+
+export enum DocumentStatus {
+  DISCOVERED = "DISCOVERED",
+  INGESTED = "INGESTED",
+  PARSED = "PARSED",
+  VALIDATED = "VALIDATED",
+  INDEXED = "INDEXED",
+  ACTIVE = "ACTIVE",
+  SUPERSEDED = "SUPERSEDED",
+  RETIRED = "RETIRED",
+  REJECTED = "REJECTED",
+}
+
+export enum FreshnessStatus {
+  CURRENT = "CURRENT",
+  STALE = "STALE",
+  EXPIRED = "EXPIRED",
+  UNKNOWN = "UNKNOWN",
+}
+
+export enum KnowledgeJurisdiction {
+  INDIA = "INDIA",
+  TAMIL_NADU = "TAMIL_NADU",
+  CENTRAL_GOVERNMENT = "CENTRAL_GOVERNMENT",
+  JURISDICTION_UNCERTAIN = "JURISDICTION_UNCERTAIN",
+}
+
+export interface CitationMetadata {
+  citation_id: string;
+  document_id: string;
+  document_title: string;
+  publisher: string;
+  version: string;
+  section_page: string;
+  effective_date: string;
+  source_url: string;
+  retrieved_at: string;
+  excerpt: string;
+  authority_tier: number;
+  jurisdiction: string;
+}
+
+export interface KnowledgeItemPayload {
+  document_id: string;
+  version: string;
+  title: string;
+  publisher: string;
+  jurisdiction: string;
+  source_url: string;
+  chunk_id: string;
+  excerpt: string;
+  relevance: number;
+  authority_tier: number;
+  effective_status: string;
+  source_date: string;
+  retrieved_at: string;
+  citation: CitationMetadata;
+}
+
+export interface KnowledgeQueryPayload {
+  query: string;
+  language?: string;
+  jurisdiction?: string;
+  topic?: string;
+  source_tiers?: number[];
+  as_of_date?: string;
+  effective_only?: boolean;
+  max_results?: number;
+}
+
+export interface KnowledgeResultPayload {
+  query_id: string;
+  call_id?: string;
+  query: string;
+  status: "COMPLETED" | "NO_RELIABLE_SOURCE_FOUND" | "CONFLICT" | "DEGRADED" | "FAILED";
+  total_found: number;
+  results: KnowledgeItemPayload[];
+  citations: CitationMetadata[];
+  ai_summary?: string;
+  requires_human_review: boolean;
+  review_reasons?: string[];
+  conflict_detected?: boolean;
+  conflicting_sources?: Array<{
+    source_a: string;
+    source_b: string;
+    description: string;
+  }>;
+  search_latency_ms: number;
+  executed_at: string;
 }
 

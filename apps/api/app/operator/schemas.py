@@ -53,6 +53,8 @@ class AddNoteRequest(BaseModel):
     category: OperatorNoteCategory = Field(default=OperatorNoteCategory.GENERAL)
     text: str = Field(..., min_length=1)
     operator_id: str = Field(default="operator")
+    citation_ref: Optional[str] = Field(default=None)
+
 
 
 class EndCallRequest(BaseModel):

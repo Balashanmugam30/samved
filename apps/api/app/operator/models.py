@@ -34,6 +34,8 @@ class OperatorNote(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
     is_structured: bool = True
+    citation_ref: Optional[str] = None
+
 
 
 class OperatorAuditEvent(BaseModel):

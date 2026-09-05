@@ -69,6 +69,9 @@ class AgentRequest(BaseModel):
     deadline_ms: int = Field(default=0)  # Epoch timestamp ms or timeout ms
     relevant_context: Dict[str, Any] = Field(default_factory=dict)
     constraints: List[str] = Field(default_factory=list)
+    last_caller_utterance: Optional[str] = None
+    transcript_history: List[Dict[str, Any]] = Field(default_factory=list)
+
 
 
 class AgentResponse(BaseModel):
@@ -96,6 +99,7 @@ class ValidatedContext(BaseModel):
     safety_info: Dict[str, Any] = Field(default_factory=dict)
     acoustic_info: Dict[str, Any] = Field(default_factory=dict)
     support_info: Dict[str, Any] = Field(default_factory=dict)
+    knowledge_info: Dict[str, Any] = Field(default_factory=dict)
     evidence_refs: List[str] = Field(default_factory=list)
     conflict_resolutions: List[str] = Field(default_factory=list)
 

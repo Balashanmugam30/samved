@@ -258,6 +258,7 @@ async def add_call_note(call_id: str, req: AddNoteRequest):
         operator_id=req.operator_id,
         category=req.category,
         text=req.text,
+        citation_ref=req.citation_ref,
     )
     return note
 

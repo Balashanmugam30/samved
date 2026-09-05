@@ -33,6 +33,11 @@ import {
   FileText,
   Terminal,
   Compass,
+  BookOpen,
+  Scale,
+  Search,
+  ExternalLink,
+  BookmarkPlus,
 } from "lucide-react";
 import { useOperatorWebSocket } from "@/hooks/useOperatorWebSocket";
 import { EventEnvelope, EventType } from "@samved/schemas";
@@ -186,7 +191,9 @@ type EventFilterCategory =
   | "SVI"
   | "ACOUSTIC"
   | "ADAPTIVE"
-  | "ORCHESTRATION";
+  | "ORCHESTRATION"
+  | "KNOWLEDGE";
+
 
 export default function OperatorCallsPage() {
   // Call lists
@@ -227,9 +234,21 @@ export default function OperatorCallsPage() {
     language_context_agent: { status: "SUCCESS", latency_ms: 15, confidence: 0.9 },
     conversation_context_agent: { status: "SUCCESS", latency_ms: 45, confidence: 0.85 },
     support_options_agent: { status: "SUCCESS", latency_ms: 5, confidence: 1.0 },
+    knowledge_retrieval_agent: { status: "SUCCESS", latency_ms: 18, confidence: 0.95 },
     operator_briefing_agent: { status: "SUCCESS", latency_ms: 22, confidence: 0.95 },
   });
   const [isRefreshingOrchestration, setIsRefreshingOrchestration] = useState<boolean>(false);
+
+  // Phase 10: Legal / Policy Knowledge RAG State
+  const [knowledgeQuery, setKnowledgeQuery] = useState<string>("");
+  const [knowledgeJurisdiction, setKnowledgeJurisdiction] = useState<string>("ALL");
+  const [knowledgeLanguage, setKnowledgeLanguage] = useState<string>("ALL");
+  const [knowledgeCurrentOnly, setKnowledgeCurrentOnly] = useState<boolean>(true);
+  const [knowledgeStatus, setKnowledgeStatus] = useState<string>("READY");
+  const [isSearchingKnowledge, setIsSearchingKnowledge] = useState<boolean>(false);
+  const [knowledgeResult, setKnowledgeResult] = useState<any | null>(null);
+  const [selectedSourceDetail, setSelectedSourceDetail] = useState<any | null>(null);
+
 
   // Selected Call Data
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
@@ -339,6 +358,7 @@ export default function OperatorCallsPage() {
     text: string;
     timestamp: string;
     is_structured: boolean;
+    citation_ref?: string;
   }>>([]);
   const [isNotesModalOpen, setIsNotesModalOpen] = useState<boolean>(false);
   const [newNoteText, setNewNoteText] = useState<string>("");
@@ -779,6 +799,7 @@ export default function OperatorCallsPage() {
                   text: String(payload.text || ""),
                   timestamp: String(payload.timestamp || envelope.timestamp),
                   is_structured: Boolean(payload.is_structured ?? true),
+                  citation_ref: payload.citation_ref ? String(payload.citation_ref) : undefined,
                 },
                 ...prev,
               ];
@@ -826,6 +847,28 @@ export default function OperatorCallsPage() {
           if (payload.briefing) setOrchestrationBriefing(payload.briefing);
           if (payload.orchestration_state) setOrchestrationState(payload.orchestration_state);
           if (payload.total_latency_ms) setOrchestrationLatency(payload.total_latency_ms);
+          break;
+
+        case "KNOWLEDGE_SEARCH_STARTED" as any:
+        case EventType.KNOWLEDGE_SEARCH_STARTED:
+          setKnowledgeStatus("SEARCHING");
+          setIsSearchingKnowledge(true);
+          break;
+
+        case "KNOWLEDGE_SEARCH_COMPLETED" as any:
+        case EventType.KNOWLEDGE_SEARCH_COMPLETED:
+          setKnowledgeStatus(payload.status || "COMPLETED");
+          setIsSearchingKnowledge(false);
+          setKnowledgeResult(payload);
+          break;
+
+        case "KNOWLEDGE_SOURCE_CONFLICT" as any:
+        case EventType.KNOWLEDGE_SOURCE_CONFLICT:
+          setKnowledgeStatus("CONFLICT");
+          break;
+
+        case "KNOWLEDGE_REVIEW_RECOMMENDED" as any:
+        case EventType.KNOWLEDGE_REVIEW_RECOMMENDED:
           break;
       }
     },
@@ -875,7 +918,12 @@ export default function OperatorCallsPage() {
   const selectCall = async (callId: string) => {
     setSelectedCallId(callId);
     setPartialDraft(null);
+    setKnowledgeResult(null);
+    setSelectedSourceDetail(null);
+    setKnowledgeStatus("READY");
+    setKnowledgeQuery("");
     subscribeCall(callId);
+
 
     // Fetch call details, transcripts, and safety state via REST snapshot
     try {
@@ -1311,6 +1359,66 @@ export default function OperatorCallsPage() {
     }
   };
 
+  const handleSearchKnowledge = async (customQuery?: string) => {
+    const q = customQuery !== undefined ? customQuery : knowledgeQuery;
+    if (!q.trim()) return;
+    setIsSearchingKnowledge(true);
+    setKnowledgeStatus("SEARCHING");
+    try {
+      const res = await fetch(`${apiUrl}/v1/knowledge/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: q.trim(),
+          jurisdiction: knowledgeJurisdiction === "ALL" ? undefined : knowledgeJurisdiction,
+          language: knowledgeLanguage === "ALL" ? undefined : knowledgeLanguage,
+          effective_only: knowledgeCurrentOnly,
+          call_id: selectedCallId || undefined,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setKnowledgeResult(data);
+        setKnowledgeStatus(data.status || "COMPLETED");
+      } else {
+        setKnowledgeStatus("FAILED");
+      }
+    } catch {
+      setKnowledgeStatus("DEGRADED");
+    } finally {
+      setIsSearchingKnowledge(false);
+    }
+  };
+
+  const handleSaveKnowledgeAsNote = async (item?: any) => {
+    if (!selectedCallId) return;
+    const citation = item?.citation || knowledgeResult?.citations?.[0];
+    const citationRef = citation ? `citation:${citation.citation_id}` : undefined;
+    const noteText = item
+      ? `[Source Citation]: ${item.title} (${item.citation?.section_page || "Section"}) - ${item.excerpt}`
+      : `[Knowledge Summary]: ${knowledgeResult?.ai_summary || "Retrieved policy guidance."}`;
+
+    try {
+      const res = await fetch(`${apiUrl}/v1/operator/calls/${selectedCallId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: "GENERAL",
+          text: noteText,
+          operator_id: "operator_1",
+          citation_ref: citationRef,
+        }),
+      });
+      if (res.ok) {
+        const note = await res.json();
+        setOperatorNotes((prev) => [note, ...prev]);
+      }
+    } catch (e) {
+      console.error("Save knowledge note error:", e);
+    }
+  };
+
+
   const handleEndCall = async () => {
     if (!selectedCallId) return;
     try {
@@ -1522,6 +1630,9 @@ export default function OperatorCallsPage() {
           type.includes("AGENT_") ||
           type.includes("BRIEFING")
         );
+      }
+      if (eventFilter === "KNOWLEDGE") {
+        return type.includes("KNOWLEDGE");
       }
       return true;
     });
@@ -3071,6 +3182,385 @@ export default function OperatorCallsPage() {
                 )}
               </div>
 
+              {/* Phase 10: Legal / Policy Knowledge RAG (Governed Retrieval Layer) */}
+              <div
+                data-testid="knowledge-panel"
+                className="mx-5 mt-3 p-4 rounded-xl bg-gradient-to-br from-slate-900/90 to-amber-950/20 border border-amber-800/40 shadow"
+              >
+                {/* Panel Header */}
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-amber-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-amber-200">
+                      Legal &amp; Policy Knowledge RAG
+                    </span>
+                    <span
+                      data-testid="knowledge-status-badge"
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono ${
+                        knowledgeStatus === "COMPLETED"
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                          : knowledgeStatus === "CONFLICT"
+                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                          : knowledgeStatus === "NO_RELIABLE_SOURCE_FOUND"
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                          : knowledgeStatus === "SEARCHING"
+                          ? "bg-blue-500/20 text-blue-300 border border-blue-500/40 animate-pulse"
+                          : "bg-slate-800 text-slate-400"
+                      }`}
+                    >
+                      {knowledgeStatus}
+                    </span>
+                    {knowledgeResult?.total_found !== undefined && (
+                      <span
+                        data-testid="knowledge-results-count"
+                        className="text-[10px] font-mono text-slate-400 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800"
+                      >
+                        {knowledgeResult.total_found} {knowledgeResult.total_found === 1 ? "source" : "sources"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-amber-400/80 font-mono flex items-center gap-1">
+                      <Scale className="h-3 w-3" />
+                      Citation-First Governance
+                    </span>
+                  </div>
+                </div>
+
+                {/* Search Bar & Filters */}
+                <div className="mb-3 space-y-2">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
+                      <input
+                        type="text"
+                        data-testid="knowledge-query-input"
+                        placeholder="Search government schemes, PWDVA provisions, shelter procedures..."
+                        value={knowledgeQuery}
+                        onChange={(e) => setKnowledgeQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSearchKnowledge();
+                        }}
+                        className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-950/70 border border-slate-700/80 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/60 font-sans"
+                      />
+                    </div>
+                    <button
+                      data-testid="knowledge-search-button"
+                      onClick={() => handleSearchKnowledge()}
+                      disabled={isSearchingKnowledge || !knowledgeQuery.trim()}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
+                    >
+                      {isSearchingKnowledge ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Search className="h-3.5 w-3.5" />
+                      )}
+                      <span>Retrieve</span>
+                    </button>
+                  </div>
+
+                  {/* Filter Controls */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Jurisdiction:</label>
+                        <select
+                          data-testid="knowledge-jurisdiction-filter"
+                          value={knowledgeJurisdiction}
+                          onChange={(e) => setKnowledgeJurisdiction(e.target.value)}
+                          className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-300 focus:outline-none"
+                        >
+                          <option value="ALL">All Jurisdictions</option>
+                          <option value="INDIA">India (Central Laws)</option>
+                          <option value="TAMIL_NADU">Tamil Nadu (State Policy)</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Language:</label>
+                        <select
+                          data-testid="knowledge-language-filter"
+                          value={knowledgeLanguage}
+                          onChange={(e) => setKnowledgeLanguage(e.target.value)}
+                          className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-300 focus:outline-none"
+                        >
+                          <option value="ALL">All Languages</option>
+                          <option value="en-IN">English (en-IN)</option>
+                          <option value="ta-IN">Tamil (ta-IN)</option>
+                          <option value="hi-IN">Hindi (hi-IN)</option>
+                        </select>
+                      </div>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none text-[11px] text-slate-300">
+                        <input
+                          type="checkbox"
+                          data-testid="knowledge-current-only-toggle"
+                          checked={knowledgeCurrentOnly}
+                          onChange={(e) => setKnowledgeCurrentOnly(e.target.checked)}
+                          className="rounded border-slate-700 text-amber-600 focus:ring-0"
+                        />
+                        <span>Current / Effective Only</span>
+                      </label>
+                    </div>
+
+                    {knowledgeResult?.search_latency_ms !== undefined && (
+                      <span className="text-[10px] font-mono text-slate-500">
+                        Latency: {knowledgeResult.search_latency_ms.toFixed(0)} ms
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Warning Banners */}
+                {knowledgeResult?.conflict_detected && (
+                  <div
+                    data-testid="knowledge-conflict-banner"
+                    className="mb-3 p-2.5 rounded-lg bg-rose-950/40 border border-rose-600/70 text-rose-200 text-xs flex items-start gap-2"
+                  >
+                    <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">SOURCE CONFLICT DETECTED</div>
+                      <div className="text-[11px] text-rose-300/90 mt-0.5">
+                        Two applicable policy directives specify contradictory guidelines. Human supervisor review recommended before counseling.
+                      </div>
+                      {knowledgeResult.conflicting_sources?.map((c: any, i: number) => (
+                        <div key={i} className="text-[10px] text-rose-300 font-mono mt-1">
+                          • {c.description} {c.resolution ? `(${c.resolution})` : ""}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {knowledgeResult?.results?.some((r: any) => r.effective_status === "STALE" || r.effective_status === "EXPIRED") && (
+                  <div
+                    data-testid="knowledge-stale-banner"
+                    className="mb-3 p-2.5 rounded-lg bg-amber-950/40 border border-amber-600/70 text-amber-200 text-xs flex items-start gap-2"
+                  >
+                    <Clock className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">SOURCE MAY BE OUTDATED</div>
+                      <div className="text-[11px] text-amber-300/90 mt-0.5">
+                        One or more retrieved guidelines are superseded or past their effective sunset period. Verify current circular before providing counsel.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {knowledgeResult?.requires_human_review && !knowledgeResult.conflict_detected && knowledgeResult.status !== "NO_RELIABLE_SOURCE_FOUND" && (
+                  <div
+                    data-testid="knowledge-review-banner"
+                    className="mb-3 p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-600/60 text-indigo-200 text-xs flex items-start gap-2"
+                  >
+                    <ShieldAlert className="h-4 w-4 text-indigo-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">HUMAN REVIEW RECOMMENDED</div>
+                      <div className="text-[11px] text-indigo-300/90 mt-0.5">
+                        Complex legal/procedural qualifiers present. Tele-counselor verification required.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {knowledgeStatus === "NO_RELIABLE_SOURCE_FOUND" && (
+                  <div
+                    data-testid="knowledge-no-source-notice"
+                    className="mb-3 p-3 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-300 text-xs text-center"
+                  >
+                    <AlertCircle className="h-5 w-5 text-amber-400 mx-auto mb-1 opacity-80" />
+                    <div className="font-semibold text-slate-200">NO RELIABLE SOURCE FOUND</div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      No sufficiently authoritative source was retrieved for this query under the selected jurisdiction/date. General model guesswork is strictly blocked.
+                    </p>
+                  </div>
+                )}
+
+                {/* AI Summary Card (Explicit distinction from source text) */}
+                {knowledgeResult?.ai_summary && knowledgeStatus !== "NO_RELIABLE_SOURCE_FOUND" && (
+                  <div
+                    data-testid="knowledge-ai-summary"
+                    className="mb-3 p-3 rounded-lg bg-slate-950/80 border border-amber-800/50"
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider">
+                          AI SUMMARY
+                        </span>
+                        <span className="text-[10px] text-slate-400 lowercase">(synthesized strictly from citations below)</span>
+                      </div>
+                      <button
+                        data-testid="save-knowledge-note-button"
+                        onClick={() => handleSaveKnowledgeAsNote()}
+                        disabled={!selectedCallId}
+                        className="px-2 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1 transition-all disabled:opacity-40"
+                      >
+                        <BookmarkPlus className="h-3 w-3 text-amber-400" />
+                        <span>Save to Notes</span>
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-line font-sans">
+                      {knowledgeResult.ai_summary}
+                    </p>
+                  </div>
+                )}
+
+                {/* Retrieved Source Cards */}
+                {knowledgeResult?.results && knowledgeResult.results.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                      <span>Authoritative Sources &amp; Excerpts</span>
+                      <span className="text-slate-500 font-normal lowercase">(citation-backed)</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      {knowledgeResult.results.map((item: any, idx: number) => (
+                        <div
+                          key={item.chunk_id || idx}
+                          data-testid="knowledge-source-card"
+                          className="p-2.5 rounded-lg bg-slate-950/90 border border-slate-800 hover:border-slate-700 transition-all text-xs"
+                        >
+                          {/* Card Header: Title & Badges */}
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <div>
+                              <div data-testid="source-card-title" className="font-semibold text-slate-100 flex items-center gap-1.5">
+                                <span>{item.title}</span>
+                                <span className="text-[10px] font-mono text-slate-400">v{item.version}</span>
+                              </div>
+                              <div data-testid="source-card-publisher" className="text-[10px] text-slate-400">
+                                {item.publisher}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span
+                                data-testid="source-card-tier"
+                                className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+                                  item.authority_tier === 1
+                                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                    : item.authority_tier === 2
+                                    ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                                    : "bg-slate-800 text-slate-400"
+                                }`}
+                              >
+                                Tier {item.authority_tier}
+                              </span>
+                              <span
+                                data-testid="source-card-jurisdiction"
+                                className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-slate-800 text-slate-300"
+                              >
+                                {item.jurisdiction}
+                              </span>
+                              <span
+                                data-testid="source-card-status"
+                                className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+                                  item.effective_status === "CURRENT"
+                                    ? "bg-emerald-500/20 text-emerald-400"
+                                    : "bg-amber-500/20 text-amber-400"
+                                }`}
+                              >
+                                {item.effective_status}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Section & Date */}
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1 border-t border-slate-900 pt-1">
+                            <span data-testid="source-card-section" className="truncate max-w-[60%]">
+                              Sec: {item.citation?.section_page || "General"}
+                            </span>
+                            <span data-testid="source-card-date" className="font-mono">
+                              Effective: {item.source_date}
+                            </span>
+                          </div>
+
+                          {/* Verbatim Excerpt */}
+                          <div
+                            data-testid="source-card-excerpt"
+                            className="p-2 rounded bg-slate-900/90 border border-slate-800/80 text-slate-300 text-[11px] leading-relaxed mb-1.5 italic"
+                          >
+                            &ldquo;{item.excerpt}&rdquo;
+                          </div>
+
+                          {/* Footer Actions & Citation Ref */}
+                          <div className="flex items-center justify-between pt-1 border-t border-slate-900 text-[10px]">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                data-testid="source-card-citation"
+                                className="font-mono text-amber-400/90 bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-800/40"
+                              >
+                                {item.citation?.citation_id ? `cit:${item.citation.citation_id.slice(0, 8)}` : "cit:verified"}
+                              </span>
+                              {item.source_url && (
+                                <a
+                                  data-testid="source-card-link"
+                                  href={item.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-slate-400 hover:text-amber-300 flex items-center gap-0.5 underline transition-colors"
+                                >
+                                  <span>Official Source</span>
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                </a>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                data-testid="source-card-view-details"
+                                onClick={() => setSelectedSourceDetail(item)}
+                                className="text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800"
+                              >
+                                View Details
+                              </button>
+                              <button
+                                onClick={() => handleSaveKnowledgeAsNote(item)}
+                                disabled={!selectedCallId}
+                                className="text-amber-400 hover:text-amber-300 px-1.5 py-0.5 rounded bg-amber-950/30 hover:bg-amber-950/50 border border-amber-800/40 disabled:opacity-40"
+                              >
+                                Cite in Note
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Source Detail Modal */}
+                {selectedSourceDetail && (
+                  <div
+                    data-testid="knowledge-source-detail"
+                    className="mt-3 p-3 rounded-lg bg-slate-950 border border-slate-700 text-xs space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-1">
+                      <span className="font-bold text-slate-200">Source Provenance &amp; Chunk Detail</span>
+                      <button
+                        onClick={() => setSelectedSourceDetail(null)}
+                        className="text-slate-400 hover:text-slate-200 text-xs"
+                      >
+                        ✕ Close
+                      </button>
+                    </div>
+                    <div className="text-[11px] text-slate-300 space-y-1">
+                      <div><strong className="text-slate-400">Document ID:</strong> {selectedSourceDetail.document_id}</div>
+                      <div><strong className="text-slate-400">Chunk ID:</strong> {selectedSourceDetail.chunk_id}</div>
+                      <div><strong className="text-slate-400">Authority:</strong> Tier {selectedSourceDetail.authority_tier}</div>
+                      <div><strong className="text-slate-400">Jurisdiction:</strong> {selectedSourceDetail.jurisdiction}</div>
+                      <div><strong className="text-slate-400">Canonical URL:</strong> {selectedSourceDetail.source_url}</div>
+                      <div><strong className="text-slate-400">Retrieved:</strong> {selectedSourceDetail.retrieved_at}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Mandatory Legal & Safety Disclaimer */}
+                <div
+                  data-testid="knowledge-disclaimer"
+                  className="mt-2 text-[10px] text-slate-500 italic text-center border-t border-slate-800/80 pt-1.5"
+                >
+                  Retrieved legal and policy information is provided as source-grounded operational support and is not a substitute for qualified legal advice or official determination.
+                </div>
+              </div>
+
               {/* Live Transcript Chronological Stream */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {transcripts.length === 0 && !partialDraft ? (
@@ -3195,10 +3685,11 @@ export default function OperatorCallsPage() {
 
             {/* Filter Pills */}
             <div className="flex flex-wrap gap-1">
-              {(["ALL", "OPERATOR", "SAFETY", "SVI", "ACOUSTIC", "ADAPTIVE", "ORCHESTRATION", "TRANSCRIPT", "CONVERSATION", "ERRORS", "LATENCY"] as EventFilterCategory[]).map(
+              {(["ALL", "OPERATOR", "SAFETY", "SVI", "ACOUSTIC", "ADAPTIVE", "ORCHESTRATION", "KNOWLEDGE", "TRANSCRIPT", "CONVERSATION", "ERRORS", "LATENCY"] as EventFilterCategory[]).map(
                 (f) => (
                   <button
                     key={f}
+                    data-testid={`timeline-filter-${f}`}
                     onClick={() => setEventFilter(f)}
                     className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
                       eventFilter === f
@@ -3224,6 +3715,7 @@ export default function OperatorCallsPage() {
                 const isTts = type.includes("TTS") || type.includes("SPEAKING");
                 const isLatency = type.includes("LATENCY");
                 const isOrch = type.includes("ORCHESTRATION") || type.includes("AGENT_") || type.includes("BRIEFING");
+                const isKnowledge = type.includes("KNOWLEDGE");
 
                 return (
                   <div
@@ -3238,6 +3730,8 @@ export default function OperatorCallsPage() {
                         ? "bg-purple-950/20 border-purple-800/50"
                         : isOrch
                         ? "bg-teal-950/20 border-teal-800/50"
+                        : isKnowledge
+                        ? "bg-amber-950/20 border-amber-800/50"
                         : "bg-slate-900 border-slate-800"
                     }`}
                   >
@@ -3252,6 +3746,8 @@ export default function OperatorCallsPage() {
                             ? "text-purple-400"
                             : isOrch
                             ? "text-teal-400"
+                            : isKnowledge
+                            ? "text-amber-400"
                             : "text-indigo-400"
                         }`}
                       >
@@ -4693,6 +5189,14 @@ export default function OperatorCallsPage() {
                               {note.category}
                             </span>
                             <span className="font-mono text-slate-400">{note.operator_id}</span>
+                            {note.citation_ref && (
+                              <span
+                                data-testid="note-citation-ref"
+                                className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-amber-950/50 text-amber-300 border border-amber-800/50"
+                              >
+                                {note.citation_ref}
+                              </span>
+                            )}
                           </div>
                           <span className="text-[10px] text-slate-500 font-mono">
                             {new Date(note.timestamp).toLocaleTimeString()}

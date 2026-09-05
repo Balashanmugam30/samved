@@ -120,6 +120,14 @@ export enum EventType {
   ANALYTICS_JOB_COMPLETED = "ANALYTICS_JOB_COMPLETED",
   ANALYTICS_JOB_FAILED = "ANALYTICS_JOB_FAILED",
 
+  // Scenario Simulation & Operator Training Sandbox (Phase 14)
+  BENCHMARK_RUN_STARTED = "BENCHMARK_RUN_STARTED",
+  BENCHMARK_RUN_COMPLETED = "BENCHMARK_RUN_COMPLETED",
+  BENCHMARK_RUN_FAILED = "BENCHMARK_RUN_FAILED",
+  TRAINING_SESSION_STARTED = "TRAINING_SESSION_STARTED",
+  TRAINING_SESSION_COMPLETED = "TRAINING_SESSION_COMPLETED",
+  TRAINING_TURN_EVALUATED = "TRAINING_TURN_EVALUATED",
+
   // Heartbeat / ping-pong
   HEARTBEAT_PING = "HEARTBEAT_PING",
   HEARTBEAT_PONG = "HEARTBEAT_PONG"
@@ -1030,3 +1038,158 @@ export interface AnalyticsJobPayload {
   suppressed_count: number;
   error_count: number;
 }
+
+// ============================================================================
+// Phase 14: Scenario Simulation Engine & Operator Training Sandbox Contracts
+// ============================================================================
+
+export enum BenchmarkSuiteType {
+  SMOKE = "SMOKE",
+  FULL = "FULL",
+  CUSTOM = "CUSTOM"
+}
+
+export enum BenchmarkRunStatus {
+  PENDING = "PENDING",
+  RUNNING = "RUNNING",
+  COMPLETED = "COMPLETED",
+  FAILED = "FAILED"
+}
+
+export enum NoiseProfile {
+  CLEAN = "CLEAN",
+  TELEPHONY_8KHZ = "TELEPHONY_8KHZ",
+  LOW_SNR_STREET = "LOW_SNR_STREET",
+  PACKET_LOSS_BURST = "PACKET_LOSS_BURST"
+}
+
+export enum DrillDifficulty {
+  BEGINNER = "BEGINNER",
+  INTERMEDIATE = "INTERMEDIATE",
+  ADVANCED = "ADVANCED",
+  EXPERT = "EXPERT"
+}
+
+export interface SyntheticDialogueTurn {
+  turn: number;
+  speaker: "caller" | "agent";
+  text: string;
+  partial?: string;
+  language?: string;
+  delay_after_ms?: number;
+}
+
+export interface SimulationScenarioPayload {
+  id: string;
+  scenario_id: string;
+  title: string;
+  description: string;
+  language: string;
+  expected_svi_band: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+  expected_score_range: [number, number];
+  expected_safety_triggers: string[];
+  prohibited_safety_triggers?: string[];
+  noise_profile?: NoiseProfile;
+  synthetic_dialogue: SyntheticDialogueTurn[];
+  expected_rag_citations?: string[];
+  tags?: string[];
+}
+
+export interface WERMetricResult {
+  wer: number;
+  cer: number;
+  substitutions: number;
+  deletions: number;
+  insertions: number;
+  hits: number;
+  reference_words: number;
+  hypothesis_words: number;
+  reference_chars: number;
+  hypothesis_chars: number;
+  normalized_reference: string;
+  normalized_hypothesis: string;
+  alignment?: Array<{
+    ref_token: string;
+    hyp_token: string;
+    op: "match" | "sub" | "del" | "ins";
+  }>;
+}
+
+export interface ScenarioEvaluationResult {
+  scenario_id: string;
+  passed: boolean;
+  language: string;
+  expected_svi_band: string;
+  actual_svi_band: string;
+  svi_score: number;
+  expected_safety_triggers: string[];
+  actual_safety_triggers: string[];
+  safety_recall: number;
+  false_negative_hazard: boolean;
+  wer_result?: WERMetricResult | null;
+  turn_latencies_ms: number[];
+  p95_latency_ms: number;
+  error_message?: string | null;
+}
+
+export interface BenchmarkRunSummary {
+  run_id: string;
+  suite: BenchmarkSuiteType;
+  status: BenchmarkRunStatus;
+  started_at: string;
+  completed_at?: string | null;
+  total_scenarios: number;
+  passed_scenarios: number;
+  failed_scenarios: number;
+  pass_rate: number;
+  mean_wer: number;
+  mean_cer: number;
+  safety_recall_rate: number;
+  svi_band_accuracy: number;
+  p95_latency_ms: number;
+  critical_safety_passed: boolean;
+  results: ScenarioEvaluationResult[];
+}
+
+export interface TrainingDrillPayload {
+  id: string;
+  drill_key: string;
+  title: string;
+  category: string;
+  difficulty: DrillDifficulty;
+  language: string;
+  description: string;
+  scenario_context: string;
+  expected_competencies: string[];
+  turns: SyntheticDialogueTurn[];
+}
+
+export interface TrainingTurnEvaluationPayload {
+  turn_number: number;
+  trainee_input: string;
+  score: number;
+  safety_protocol_score: number;
+  empathy_score: number;
+  de_escalation_score: number;
+  statutory_referral_score: number;
+  feedback_hints: string[];
+  caller_next_turn?: string | null;
+}
+
+export interface TrainingSessionPayload {
+  session_id: string;
+  drill_id: string;
+  trainee_id: string;
+  trainee_name?: string;
+  status: "ACTIVE" | "COMPLETED" | "ABANDONED";
+  started_at: string;
+  completed_at?: string | null;
+  current_turn: number;
+  total_turns: number;
+  overall_score?: number | null;
+  performance_rating?: "EXEMPLARY" | "PROFICIENT" | "DEVELOPING" | "NEEDS_IMPROVEMENT" | null;
+  competency_breakdown?: Record<string, number>;
+  recommendations?: string[];
+  evaluated_turns: TrainingTurnEvaluationPayload[];
+}
+

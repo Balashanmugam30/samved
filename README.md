@@ -30,6 +30,7 @@ When a victim, concerned family member, or at-risk citizen calls the national he
 8. **Case Intelligence & Referral Grounding**: Synthesizes longitudinal intake records linked to verified government rehabilitation facilities (IRCAs, de-addiction centers, legal aid clinics).
 9. **Follow-up Workflow & Continuity Engine**: Manages human-supervised, consent-verified scheduled check-ins, referrals, and care continuity with safe contact windows, attempt caps, bounded recurrence, and zero autonomous robot-dialing.
 10. **District Intelligence & Operational Analytics**: Provides aggregated, privacy-preserving operational analytics for helpline capacity planners without exposing individual caller data, enforcing K-Anonymity ($k \ge 10$), small-cell suppression, and zero predictive policing.
+11. **Scenario Simulation Engine & Operator Training Sandbox**: Continuous automated benchmarking across 24 calibrated synthetic scenarios in 11 Indic languages, Wagner-Fischer Indic ASR WER/CER evaluation, deterministic 100% safety recall verification ($\text{Recall} = 1.00$), and an interactive tele-counselor training simulator with real-time SOP scoring.
 
 ---
 
@@ -208,7 +209,8 @@ pnpm dev:web
 
 | Task | Command | Description |
 | :--- | :--- | :--- |
-| **Backend Tests** | `uv --directory apps/api run pytest -v` | Runs 336 unit, integration, safety, SVI, acoustic, adaptive, operator, orchestration, knowledge RAG, case intelligence, follow-up, and district analytics tests |
+| **Backend Tests** | `uv --directory apps/api run pytest -v` | Runs 356 unit, integration, safety, SVI, acoustic, adaptive, operator, orchestration, knowledge RAG, case intelligence, follow-up, district analytics, and scenario simulation tests |
+| **Simulation Engine Tests**| `uv --directory apps/api run pytest -k simulation -v` | Validates Wagner-Fischer Indic WER/CER normalizer, 24 synthetic scenarios, automated benchmark harness, 100% safety recall verification, and sandbox SOP scoring |
 | **District Analytics Tests**| `uv --directory apps/api run pytest -k analytics -v` | Validates K-Anonymity ($k \ge 10$), small-cell suppression, complementary difference-attack defense, deterministic trends, and access controls |
 | **Follow-up Tests** | `uv --directory apps/api run pytest tests/test_followup_*.py -v` | Validates consent FSM, safe windows, bounded recurrence, attempt caps, idempotency, audit trail, concurrency, and security |
 | **Contract Flow Test** | `uv --directory apps/api run pytest tests/test_contract_flow.py -v` | Validates end-to-end event schema transport |
@@ -221,7 +223,7 @@ pnpm dev:web
 | **Adaptive Tests** | `uv --directory apps/api run pytest tests/test_adaptive_*.py -v` | Validates deterministic conversational policy and overrides |
 | **Frontend Type Check** | `pnpm type-check` | Type-checks all TypeScript packages & web app |
 | **Frontend Build** | `pnpm build` | Compiles production Next.js web application |
-| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 150 browser E2E tests (Desktop + Mobile Chrome across all 13 phases including 22 analytics tests) |
+| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 166 browser E2E tests (Desktop + Mobile Chrome across all 14 phases including 16 simulation tests) |
 | **Telephony Diagnostics** | `curl http://localhost:8000/v1/telephony/doctor` | Safe credential and public ingress check without secrets |
 | **Docker Compose** | `docker compose up -d` | Starts PostgreSQL, Redis, API, and Web containers |
 
@@ -235,10 +237,11 @@ pnpm dev:web
 5. **Confidentiality & Provenance**: Caller phone numbers are masked (`+91******3210`), raw audio is ephemeral, secrets are strictly excluded from source control, and all case entities are cryptographically anchored by SHA-256 evidence hashes.
 6. **Care Continuity & Consent Boundaries**: Follow-up contacts mandate explicit, non-inferred consent (`EXPLICIT_VERBAL` or `EXPLICIT_WRITTEN`) and are strictly human-telecounselor-initiated. Autonomous robot-calling is architecturally prohibited. Revocation immediately halts all pending contact (`BLOCKED`), and caller-specified safe contact windows (e.g. `09:00-12:00`) are strictly enforced.
 7. **Non-Predictive Operational Analytics**: District Intelligence is strictly macro operational analytics for capacity and staffing. It does NOT generate predictive crime scores, neighborhood danger indices, offender rankings, or individual risk predictions. Autonomous police or emergency dispatch is architecturally prohibited.
+8. **Synthetic Benchmark Isolation**: All conversational scenarios, ASR quality evaluations, and operator training drills are strictly synthetic. Simulation calls are tagged with `provider = "simulation"` and `call_id = "SIM-*"`, preventing any live Exotel carrier line dialing, trunk utilization, or counselor queue pollution.
 
 ---
 
-## 12. Implementation Status (Phase 13 Complete)
+## 12. Implementation Status (Phase 14 Complete)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -320,7 +323,14 @@ pnpm dev:web
 | **Deterministic Period-over-Period Trends (No Predictive AI)** | ✅ | Phase 13 |
 | **Role-Governed Dashboard & Metric Inspector Drawer** | ✅ | Phase 13 |
 | **Analytics REST APIs (`/v1/analytics/...`) & Access Audit** | ✅ | Phase 13 |
-| **Scenario Simulation Engine** | ⏳ | Phase 14 |
+| **Scenario Simulation Engine & Operator Training Sandbox** | ✅ | Phase 14 |
+| **Multilingual Scenario Catalog (24 Calibrated Indic Scenarios)** | ✅ | Phase 14 |
+| **Indic ASR Normalizer & Wagner-Fischer WER/CER Engine** | ✅ | Phase 14 |
+| **Continuous Automated Benchmark Harness (100% Critical Safety Recall)** | ✅ | Phase 14 |
+| **Interactive Operator Training Sandbox & Real-time SOP Scoring** | ✅ | Phase 14 |
+| **Simulation Web Console (`/simulation`) & Telephony Isolation (`SIM-*`)** | ✅ | Phase 14 |
+| **Simulation REST APIs (`/v1/simulation/...`) & Run Persistence** | ✅ | Phase 14 |
+| **Security & Privacy Hardening** | ⏳ Next | Phase 15 |
 
 ---
 

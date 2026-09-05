@@ -594,11 +594,88 @@ CREATE INDEX IF NOT EXISTS idx_analytics_job_status ON analytics_job_runs(status
 -- Seed baseline roles
 INSERT INTO roles (id, name, permissions) VALUES
     ('role-admin', 'ADMIN', '["*"]'::jsonb),
-    ('role-supervisor', 'SUPERVISOR', '["cases:read", "cases:write", "alerts:override", "audit:read", "analytics:read"]'::jsonb),
+    ('role-supervisor', 'SUPERVISOR', '["cases:read", "cases:write", "alerts:override", "audit:read", "analytics:read", "simulation:read", "simulation:write"]'::jsonb),
     ('role-district-admin', 'DISTRICT_ADMIN', '["analytics:read", "districts:read"]'::jsonb),
-    ('role-operator', 'OPERATOR', '["cases:read", "cases:write", "calls:handle"]'::jsonb),
-    ('role-auditor', 'AUDITOR', '["audit:read", "reports:read"]'::jsonb)
+    ('role-operator', 'OPERATOR', '["cases:read", "cases:write", "calls:handle", "training:use"]'::jsonb),
+    ('role-auditor', 'AUDITOR', '["audit:read", "reports:read", "simulation:read"]'::jsonb)
 ON CONFLICT (name) DO NOTHING;
+
+-- ============================================================================
+-- Phase 14: Scenario Simulation Engine & Operator Training Sandbox Tables
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS simulation_scenarios (
+    id VARCHAR(64) PRIMARY KEY,
+    scenario_id VARCHAR(64) UNIQUE NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    language VARCHAR(10) NOT NULL,
+    expected_svi_band VARCHAR(20) NOT NULL,
+    expected_score_range INT[] DEFAULT ARRAY[0, 100],
+    expected_safety_triggers JSONB DEFAULT '[]'::jsonb,
+    prohibited_safety_triggers JSONB DEFAULT '[]'::jsonb,
+    noise_profile VARCHAR(30) DEFAULT 'CLEAN',
+    synthetic_dialogue JSONB NOT NULL DEFAULT '[]'::jsonb,
+    expected_rag_citations JSONB DEFAULT '[]'::jsonb,
+    tags JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS simulation_benchmark_runs (
+    run_id VARCHAR(64) PRIMARY KEY,
+    suite VARCHAR(20) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+    started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ,
+    total_scenarios INT DEFAULT 0,
+    passed_scenarios INT DEFAULT 0,
+    failed_scenarios INT DEFAULT 0,
+    pass_rate FLOAT DEFAULT 0.0,
+    mean_wer FLOAT DEFAULT 0.0,
+    mean_cer FLOAT DEFAULT 0.0,
+    safety_recall_rate FLOAT DEFAULT 1.0,
+    svi_band_accuracy FLOAT DEFAULT 1.0,
+    p95_latency_ms FLOAT DEFAULT 0.0,
+    critical_safety_passed BOOLEAN DEFAULT TRUE,
+    results JSONB DEFAULT '[]'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS operator_training_drills (
+    id VARCHAR(64) PRIMARY KEY,
+    drill_key VARCHAR(64) UNIQUE NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    category VARCHAR(64) NOT NULL,
+    difficulty VARCHAR(30) NOT NULL,
+    language VARCHAR(10) NOT NULL,
+    description TEXT,
+    scenario_context TEXT,
+    expected_competencies JSONB DEFAULT '[]'::jsonb,
+    turns JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS operator_training_sessions (
+    session_id VARCHAR(64) PRIMARY KEY,
+    drill_id VARCHAR(64) REFERENCES operator_training_drills(id),
+    trainee_id VARCHAR(64) NOT NULL,
+    trainee_name VARCHAR(128) DEFAULT 'Counselor Trainee',
+    status VARCHAR(30) DEFAULT 'ACTIVE',
+    started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ,
+    current_turn INT DEFAULT 1,
+    total_turns INT DEFAULT 2,
+    overall_score FLOAT,
+    performance_rating VARCHAR(30),
+    competency_breakdown JSONB DEFAULT '{}'::jsonb,
+    recommendations JSONB DEFAULT '[]'::jsonb,
+    evaluated_turns JSONB DEFAULT '[]'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_sim_scenarios_lang_band ON simulation_scenarios(language, expected_svi_band);
+CREATE INDEX IF NOT EXISTS idx_sim_runs_suite_status ON simulation_benchmark_runs(suite, status);
+CREATE INDEX IF NOT EXISTS idx_training_drills_diff ON operator_training_drills(difficulty, category);
+CREATE INDEX IF NOT EXISTS idx_training_sessions_trainee ON operator_training_sessions(trainee_id, started_at);
+
 
 
 

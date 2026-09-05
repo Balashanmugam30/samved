@@ -118,6 +118,14 @@ class EventType(str, Enum):
     ANALYTICS_JOB_COMPLETED = "ANALYTICS_JOB_COMPLETED"
     ANALYTICS_JOB_FAILED = "ANALYTICS_JOB_FAILED"
 
+    # Scenario Simulation & Operator Training Sandbox (Phase 14)
+    BENCHMARK_RUN_STARTED = "BENCHMARK_RUN_STARTED"
+    BENCHMARK_RUN_COMPLETED = "BENCHMARK_RUN_COMPLETED"
+    BENCHMARK_RUN_FAILED = "BENCHMARK_RUN_FAILED"
+    TRAINING_SESSION_STARTED = "TRAINING_SESSION_STARTED"
+    TRAINING_SESSION_COMPLETED = "TRAINING_SESSION_COMPLETED"
+    TRAINING_TURN_EVALUATED = "TRAINING_TURN_EVALUATED"
+
     # Heartbeat
     HEARTBEAT_PING = "HEARTBEAT_PING"
     HEARTBEAT_PONG = "HEARTBEAT_PONG"
@@ -1006,3 +1014,160 @@ class AnalyticsJobPayload(BaseModel):
     processed_count: int = 0
     suppressed_count: int = 0
     error_count: int = 0
+
+
+# ============================================================================
+# Phase 14: Scenario Simulation Engine & Operator Training Sandbox Models
+# ============================================================================
+
+class BenchmarkSuiteType(str, Enum):
+    SMOKE = "SMOKE"
+    FULL = "FULL"
+    CUSTOM = "CUSTOM"
+
+
+class BenchmarkRunStatus(str, Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class NoiseProfile(str, Enum):
+    CLEAN = "CLEAN"
+    TELEPHONY_8KHZ = "TELEPHONY_8KHZ"
+    LOW_SNR_STREET = "LOW_SNR_STREET"
+    PACKET_LOSS_BURST = "PACKET_LOSS_BURST"
+
+
+class DrillDifficulty(str, Enum):
+    BEGINNER = "BEGINNER"
+    INTERMEDIATE = "INTERMEDIATE"
+    ADVANCED = "ADVANCED"
+    EXPERT = "EXPERT"
+
+
+class SyntheticDialogueTurn(BaseModel):
+    turn: int
+    speaker: str  # "caller" | "agent"
+    text: str
+    partial: Optional[str] = None
+    language: Optional[str] = None
+    delay_after_ms: Optional[int] = 500
+
+
+class SimulationScenarioPayload(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    scenario_id: str
+    title: str
+    description: str
+    language: str
+    expected_svi_band: str  # "LOW" | "MODERATE" | "HIGH" | "CRITICAL"
+    expected_score_range: List[int] = Field(default_factory=lambda: [0, 100])
+    expected_safety_triggers: List[str] = Field(default_factory=list)
+    prohibited_safety_triggers: List[str] = Field(default_factory=list)
+    noise_profile: NoiseProfile = NoiseProfile.CLEAN
+    synthetic_dialogue: List[SyntheticDialogueTurn] = Field(default_factory=list)
+    expected_rag_citations: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+
+
+class TokenAlignmentOp(BaseModel):
+    ref_token: str
+    hyp_token: str
+    op: str  # "match" | "sub" | "del" | "ins"
+
+
+class WERMetricResult(BaseModel):
+    wer: float
+    cer: float
+    substitutions: int
+    deletions: int
+    insertions: int
+    hits: int
+    reference_words: int
+    hypothesis_words: int
+    reference_chars: int
+    hypothesis_chars: int
+    normalized_reference: str
+    normalized_hypothesis: str
+    alignment: Optional[List[TokenAlignmentOp]] = None
+
+
+class ScenarioEvaluationResult(BaseModel):
+    scenario_id: str
+    passed: bool
+    language: str
+    expected_svi_band: str
+    actual_svi_band: str
+    svi_score: float
+    expected_safety_triggers: List[str] = Field(default_factory=list)
+    actual_safety_triggers: List[str] = Field(default_factory=list)
+    safety_recall: float  # 1.0 or 0.0
+    false_negative_hazard: bool = False
+    wer_result: Optional[WERMetricResult] = None
+    turn_latencies_ms: List[float] = Field(default_factory=list)
+    p95_latency_ms: float = 0.0
+    error_message: Optional[str] = None
+
+
+class BenchmarkRunSummary(BaseModel):
+    run_id: str
+    suite: BenchmarkSuiteType
+    status: BenchmarkRunStatus
+    started_at: str
+    completed_at: Optional[str] = None
+    total_scenarios: int
+    passed_scenarios: int
+    failed_scenarios: int
+    pass_rate: float
+    mean_wer: float
+    mean_cer: float
+    safety_recall_rate: float
+    svi_band_accuracy: float
+    p95_latency_ms: float
+    critical_safety_passed: bool
+    results: List[ScenarioEvaluationResult] = Field(default_factory=list)
+
+
+class TrainingDrillPayload(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    drill_key: str
+    title: str
+    category: str
+    difficulty: DrillDifficulty
+    language: str
+    description: str
+    scenario_context: str
+    expected_competencies: List[str] = Field(default_factory=list)
+    turns: List[SyntheticDialogueTurn] = Field(default_factory=list)
+
+
+class TrainingTurnEvaluationPayload(BaseModel):
+    turn_number: int
+    trainee_input: str
+    score: float
+    safety_protocol_score: float
+    empathy_score: float
+    de_escalation_score: float
+    statutory_referral_score: float
+    feedback_hints: List[str] = Field(default_factory=list)
+    caller_next_turn: Optional[str] = None
+
+
+class TrainingSessionPayload(BaseModel):
+    session_id: str
+    drill_id: str
+    trainee_id: str
+    trainee_name: Optional[str] = "Counselor Trainee"
+    status: str = "ACTIVE"
+    started_at: str
+    completed_at: Optional[str] = None
+    current_turn: int = 1
+    total_turns: int = 2
+    overall_score: Optional[float] = None
+    performance_rating: Optional[str] = None
+    competency_breakdown: Dict[str, float] = Field(default_factory=dict)
+    recommendations: List[str] = Field(default_factory=list)
+    evaluated_turns: List[TrainingTurnEvaluationPayload] = Field(default_factory=list)
+

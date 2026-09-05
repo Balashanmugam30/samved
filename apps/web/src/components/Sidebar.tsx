@@ -9,6 +9,7 @@ import {
   FolderArchive,
   AlertTriangle,
   BarChart3,
+  FlaskConical,
   FileCheck,
   LifeBuoy,
 } from "lucide-react";
@@ -51,6 +52,12 @@ const navItems: NavItem[] = [
     href: "/analytics",
     icon: BarChart3,
     phaseBadge: "Phase 13",
+  },
+  {
+    label: "Simulation & Sandbox",
+    href: "/simulation",
+    icon: FlaskConical,
+    phaseBadge: "Phase 14",
   },
   {
     label: "Audit Trail",

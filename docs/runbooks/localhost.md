@@ -484,3 +484,97 @@ curl -H "X-User-Role: OPERATOR" http://localhost:8000/v1/analytics/districts/TN-
    - Navigate to `http://localhost:3000/calls`.
    - In the top action bar, click **Operations Analytics** (`data-testid="link-operations-analytics"`).
    - Confirms smooth navigation back to `/analytics`.
+
+---
+
+## 11. Verifying Phase 14 Scenario Simulation Engine & Operator Training Sandbox
+
+### 11.1 Simulation Subsystem Health & Synthetic Scenarios Catalog
+```bash
+# Check simulation subsystem status & scenario count
+curl http://localhost:8000/v1/simulation/status
+
+# List all 24 calibrated synthetic scenarios across 11 Indic languages
+curl http://localhost:8000/v1/simulation/scenarios
+
+# Filter scenarios by risk band (e.g. CRITICAL)
+curl "http://localhost:8000/v1/simulation/scenarios?band=CRITICAL"
+
+# Inspect specific scenario details (e.g. SCEN-CRIT-001)
+curl http://localhost:8000/v1/simulation/scenarios/SCEN-CRIT-001
+```
+
+### 11.2 Automated Benchmark Harness
+```bash
+# Trigger automated benchmark run (SMOKE suite: 12 scenarios)
+curl -X POST http://localhost:8000/v1/simulation/benchmark/run \
+  -H "Content-Type: application/json" \
+  -d '{"suite": "SMOKE"}'
+
+# Trigger automated benchmark run (FULL suite: 24 scenarios)
+curl -X POST http://localhost:8000/v1/simulation/benchmark/run \
+  -H "Content-Type: application/json" \
+  -d '{"suite": "FULL"}'
+
+# View benchmark run history & safety recall rate (100% target)
+curl http://localhost:8000/v1/simulation/benchmark/runs
+```
+
+### 11.3 Indic ASR Normalization & Word Error Rate (WER/CER) Calculator
+```bash
+# Evaluate Indic ASR transcription accuracy with Wagner-Fischer dynamic programming
+curl -X POST http://localhost:8000/v1/simulation/wer/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reference": "नमस्ते मुझे तुरंत सहायता चाहिए सांस नहीं आ रही",
+    "hypothesis": "नमस्ते तुरंत सहायता चाहिए सांस नहीं आ रही"
+  }'
+```
+
+### 11.4 Operator Training Sandbox & Real-time SOP Rubric Scoring
+```bash
+# List curated training drills
+curl http://localhost:8000/v1/simulation/training/drills
+
+# Start interactive drill session (e.g. DRILL-OVERDOSE-001)
+curl -X POST http://localhost:8000/v1/simulation/training/session/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "drill_key": "DRILL-OVERDOSE-001",
+    "trainee_id": "T-OPERATOR-01",
+    "trainee_name": "Trainee Tele-Counselor"
+  }'
+
+# Submit trainee turn and receive real-time SOP scoring
+curl -X POST http://localhost:8000/v1/simulation/training/session/SESSION_ID/turn \
+  -H "Content-Type: application/json" \
+  -d '{
+    "trainee_input": "Please turn him into the recovery position immediately while I coordinate the ambulance."
+  }'
+
+# Retrieve final session report with competency ratings
+curl http://localhost:8000/v1/simulation/training/session/SESSION_ID
+```
+
+### 11.5 Web Console Verification (`/simulation`)
+1. Navigate to `http://localhost:3000/simulation` (or click **Simulation & Sandbox** in the sidebar).
+2. Verify **Governance Watermark Banner** (`data-testid="governance-watermark"`):
+   - Confirms synthetic benchmark isolation: *"All conversational scenarios, ASR evaluations, and training drills are strictly synthetic. No real helpline records or active Exotel carrier lines are engaged."*
+3. Check **Top KPI Cards** (`data-testid="kpi-strip"`):
+   - Critical Safety Recall (Target 100%, 0 false negatives), Mean WER, Mean CER, SVI Calibration Accuracy, and P95 Triage Latency (< 1200ms SLA).
+4. Run **Automated Benchmark Runner Tab**:
+   - Toggle between `Smoke Suite (12)` and `Full Suite (24)`.
+   - Click `Run Benchmark` (`data-testid="btn-run-benchmark"`).
+   - Filter results table by risk band: `ALL`, `CRITICAL`, `HIGH`, `MODERATE`, `LOW`.
+   - Click `Details` on any scenario row to inspect full trigger firing and latency breakdown.
+5. Explore **Indic ASR & WER Lab Tab** (`data-testid="tab-wer-lab"`):
+   - Click Hindi Medical or Tamil Crisis preset buttons.
+   - Click `Compute WER & CER` (`data-testid="btn-compute-wer"`).
+   - Observe the color-coded token alignment diff visualization (Match, Substitution, Deletion, Insertion) and calculated metrics.
+6. Practice in the **Operator Training Sandbox Tab** (`data-testid="tab-sandbox"`):
+   - Select `Critical Opioid Overdose Rapid Intake` drill.
+   - Read caller dialogue in the timeline.
+   - Enter response: *"Please turn him on his side in recovery position immediately while I coordinate the ambulance."*
+   - Click `Submit Turn` (`data-testid="btn-submit-turn"`).
+   - Verify immediate SOP Rubric scoring (Safety Protocol 35/35, Empathy 22/25, Pacing 18/20, Referral 17/20) and feedback hints.
+

@@ -622,7 +622,11 @@ test.describe("Phase 8 Human Operator Console & Tele-Counselor Workstation E2E",
     // Click Pause Adaptive
     const pauseBtn = page.locator('[data-testid="pause-adaptive-button"]');
     await expect(pauseBtn).toBeVisible();
-    await pauseBtn.click();
+    const [pauseResp] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/pause")),
+      pauseBtn.click(),
+    ]);
+    expect(pauseResp.status()).toBe(200);
 
     // Verify AI Paused indicator and Resume button appear
     await expect(page.locator("text=AI Paused")).toBeVisible();
@@ -630,7 +634,11 @@ test.describe("Phase 8 Human Operator Console & Tele-Counselor Workstation E2E",
     await expect(resumeBtn).toBeVisible();
 
     // Click Resume Adaptive
-    await resumeBtn.click();
+    const [resumeResp] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/resume")),
+      resumeBtn.click(),
+    ]);
+    expect(resumeResp.status()).toBe(200);
     await expect(page.locator('[data-testid="pause-adaptive-button"]')).toBeVisible();
   });
 

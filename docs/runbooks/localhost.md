@@ -182,6 +182,44 @@ curl -X POST http://localhost:8000/v1/operator/calls/CALL_ID/handoff/confirm \
    - Click **Notes**: opens structured notes modal with category selector (`GENERAL`, `SAFETY`, `FOLLOW_UP_NOTE`, `HANDOFF_NOTE`, `TECHNICAL`), append-only input, and chronological notes audit trail.
    - Click **End Call**: prompts confirmation modal before terminating session.
 5. Inspect the **Unified Call Triage Summary**:
-   - Synthesizes Safety State, SVI Index (0–100), Acoustic Signal, Adaptive Policy, and Human Authority dimensions with mandatory non-clinical advisory disclaimer.
+   - Synthesizes Safety State, SVI Index (0–100), Acoustic Signal, Adaptive Policy, Human Authority, and Multi-Agent status dimensions with mandatory non-clinical advisory disclaimer.
 6. Inspect the **Event Timeline**:
-   - Filter stream by `OPERATOR`, `SAFETY`, `SVI`, `ACOUSTIC`, `ADAPTIVE`, `TRANSCRIPT`, `CONVERSATION`, `ERRORS`, `LATENCY`.
+   - Filter stream by `OPERATOR`, `SAFETY`, `SVI`, `ACOUSTIC`, `ADAPTIVE`, `ORCHESTRATION`, `TRANSCRIPT`, `CONVERSATION`, `ERRORS`, `LATENCY`.
+
+---
+
+## 6. Verifying Phase 9 Multi-Agent Orchestration
+
+### 6.1 Engine Status & Registered Workers
+```bash
+# Verify orchestrator engine status
+curl http://localhost:8000/v1/orchestration/status
+
+# List all registered worker specifications
+curl http://localhost:8000/v1/orchestration/agents
+```
+
+### 6.2 Deterministic Planning & Call Refresh
+```bash
+# Query deterministic execution plan for a turn
+curl -X POST http://localhost:8000/v1/orchestration/plan \
+  -H "Content-Type: application/json" \
+  -d '{"task_type": "turn_triage", "safety_state": "CRITICAL"}'
+
+# Trigger manual orchestration refresh for an active call
+curl -X POST http://localhost:8000/v1/orchestration/calls/CALL_ID/refresh
+```
+
+### 6.3 Multi-Agent UI Testing
+1. Navigate to `http://localhost:3000/calls` and select an active call.
+2. Inspect the **Multi-Agent Orchestration Panel** (`data-testid="multi-agent-panel"`):
+   - Check the **Orchestration State Badge** (`READY`, `RUNNING`, `COMPLETED`, `DEGRADED`).
+   - Check the **Execution Latency** badge (e.g. `135 ms`).
+   - Inspect the **6 Worker Chips** (`safety_context_agent`, `acoustic_context_agent`, `language_context_agent`, `conversation_context_agent`, `support_options_agent`, `operator_briefing_agent`).
+3. Inspect the **Operator Briefing Card** (`data-testid="operator-briefing-card"`):
+   - View synthesized Safety Context, SVI Vulnerability, Acoustic Biomarkers, Adaptive Recommendation, Key Contextual Facts, and Evidence Chains.
+4. Click **Refresh** (`data-testid="refresh-orchestration-button"`):
+   - Verifies on-demand orchestration refresh and immediate UI update.
+5. Inspect **Event Timeline**:
+   - Click `ORCHESTRATION` filter pill to view `ORCHESTRATION_STARTED`, `ORCHESTRATION_COMPLETED`, and `OPERATOR_BRIEFING_GENERATED` events.
+

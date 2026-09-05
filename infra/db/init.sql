@@ -155,6 +155,43 @@ CREATE TABLE IF NOT EXISTS call_operator_states (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 9. Multi-Agent Orchestration (Phase 9)
+CREATE TABLE IF NOT EXISTS orchestration_runs (
+    id VARCHAR(64) PRIMARY KEY,
+    call_id VARCHAR(36) NOT NULL REFERENCES calls(id),
+    turn_id VARCHAR(64) NOT NULL,
+    state VARCHAR(50) NOT NULL DEFAULT 'COMPLETED',
+    selected_agents JSONB DEFAULT '[]'::jsonb,
+    completed_agents JSONB DEFAULT '[]'::jsonb,
+    failed_agents JSONB DEFAULT '[]'::jsonb,
+    timed_out_agents JSONB DEFAULT '[]'::jsonb,
+    cancelled_agents JSONB DEFAULT '[]'::jsonb,
+    briefing JSONB DEFAULT '{}'::jsonb,
+    validated_context JSONB DEFAULT '{}'::jsonb,
+    total_latency_ms FLOAT DEFAULT 0.0,
+    warnings JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS agent_executions (
+    id VARCHAR(64) PRIMARY KEY,
+    run_id VARCHAR(64) REFERENCES orchestration_runs(id),
+    call_id VARCHAR(36) NOT NULL REFERENCES calls(id),
+    agent_name VARCHAR(100) NOT NULL,
+    agent_version VARCHAR(50) DEFAULT '1.0.0',
+    status VARCHAR(50) NOT NULL,
+    confidence FLOAT DEFAULT 1.0,
+    latency_ms FLOAT DEFAULT 0.0,
+    result JSONB DEFAULT '{}'::jsonb,
+    evidence_refs JSONB DEFAULT '[]'::jsonb,
+    warnings JSONB DEFAULT '[]'::jsonb,
+    produced_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_orchestration_runs_call_id ON orchestration_runs(call_id);
+CREATE INDEX IF NOT EXISTS idx_agent_executions_call_id ON agent_executions(call_id);
+CREATE INDEX IF NOT EXISTS idx_agent_executions_run_id ON agent_executions(run_id);
+
 -- Seed baseline roles
 INSERT INTO roles (id, name, permissions) VALUES
     ('role-admin', 'ADMIN', '["*"]'::jsonb),
@@ -162,3 +199,4 @@ INSERT INTO roles (id, name, permissions) VALUES
     ('role-operator', 'OPERATOR', '["cases:read", "cases:write", "calls:handle"]'::jsonb),
     ('role-auditor', 'AUDITOR', '["audit:read", "reports:read"]'::jsonb)
 ON CONFLICT (name) DO NOTHING;
+

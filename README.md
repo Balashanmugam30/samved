@@ -226,7 +226,7 @@ pnpm dev:web
 
 ---
 
-## 12. Implementation Status (Phase 8 Complete)
+## 12. Implementation Status (Phase 9 Complete)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -271,11 +271,14 @@ pnpm dev:web
 | **Adaptive Multilingual Conversation Policy (P0–P5, Validator)** | ✅ | Phase 7 |
 | **Adaptive Panel, Operator Overrides & Trajectory History** | ✅ | Phase 7 |
 | **Human Operator Console & Tele-Counselor Workstation** | ✅ | Phase 8 |
-| **Unified Call Triage Summary (5 Dimensions + Non-Clinical Disclaimer)** | ✅ | Phase 8 |
+| **Unified Call Triage Summary (6 Dimensions + Non-Clinical Disclaimer)** | ✅ | Phase 8 & 9 |
 | **Operator Takeover, Pause/Resume, Safety Check & End Call Controls** | ✅ | Phase 8 |
 | **Multi-Stage Counselor Handoff Lifecycle & Confirmation Guard** | ✅ | Phase 8 |
 | **Append-Only Structured Operator Notes & Auditable Timeline** | ✅ | Phase 8 |
-| **Multi-Agent Orchestrator** | ⏳ | Phase 9 |
+| **Multi-Agent Orchestration & Deterministic Stage Coordination** | ✅ | Phase 9 |
+| **Specialized AI Worker Taxonomy (6 Bounded Agents & Phase 10 Stub)** | ✅ | Phase 9 |
+| **Operator Briefing Card & Realtime Multi-Agent Oversight Panel** | ✅ | Phase 9 |
+| **Orchestration REST APIs (`/v1/orchestration/...`) & Audit Trail** | ✅ | Phase 9 |
 | **Statutory & Scheme RAG (NDPS / IRCA)** | ⏳ | Phase 10 |
 | **Longitudinal Case Intelligence** | ⏳ | Phase 11 |
 

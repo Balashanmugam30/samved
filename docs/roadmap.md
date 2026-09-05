@@ -11,8 +11,8 @@
 | **6** | **Acoustic Signal Processing** | Deterministic paralinguistic and telephony quality analysis (pitch 80–350Hz, speech ratio, silence, energy variability, clipping) as supporting triage evidence, operator Acoustic Panel, and Simulation Lab. | **COMPLETE** |
 | **7** | **Adaptive Conversation Engine** | Deterministic conversational policy layer, strict priority hierarchy (P0–P5), information-gap planning, bounded repetition, contradiction handling, operator overrides, multilingual localized templates, operator Adaptive Panel, and Simulation Lab. | **COMPLETE** |
 | **8** | **Human Operator Console & Workstation** | Full-fledged tele-counselor workstation with human takeover, pause/resume, safety checks, multi-stage handoff, structured notes, unified call triage summary, and audit timeline. | **COMPLETE** |
-| **9** | **Multi-Agent Orchestration** | Specialized bounded agents (Safety, Legal, Care, Case, Follow-up, Governance) with state graph coordination. | ⏳ Next |
-| **10** | **Grounded Legal & Scheme RAG** | Official gazette RAG (NDPS Act, Mental Healthcare Act, MoSJE NAPDDR IRCA database) with strict citation verification. | ⏳ Scheduled |
+| **9** | **Multi-Agent Orchestration** | Bounded specialized AI workers (Safety, Acoustic, Language, Context, Briefing, Support stub) with deterministic DAG coordination, latency budgeting, and operator briefings. | **COMPLETE** |
+| **10** | **Grounded Legal & Scheme RAG** | Official gazette RAG (NDPS Act, Mental Healthcare Act, MoSJE NAPDDR IRCA database) with strict citation verification. | ⏳ Next |
 | **11** | **Case Intelligence & History** | Longitudinal anonymous case timelines, intake records, referral recommendations, and multi-session tracking. | ⏳ Scheduled |
 | **12** | **Follow-up & Care Continuity** | Automated check-in cadences, appointment reminders, and counselor follow-up task queues. | ⏳ Scheduled |
 | **13** | **Operational Helpline Analytics** | Aggregated call volumes, SVI severity heatmaps, geographic clustering, and administrative reports for MoSJE. | ⏳ Scheduled |

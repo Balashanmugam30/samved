@@ -65,6 +65,11 @@ class ConversationOrchestrator:
         self.latest_adaptive_strategy: Optional[Any] = None
         self.adaptive_strategies: List[Any] = []
 
+        # Phase 9 Multi-Agent Orchestration tracking
+        self.latest_orchestration: Optional[Any] = None
+        self.orchestration_results: List[Any] = []
+        self._current_orchestration_cancel_event: Optional[asyncio.Event] = None
+
         # Active turn & latency tracking
         self.active_latency = TurnLatency()
         self.last_completed_latency = TurnLatency()
@@ -114,6 +119,9 @@ class ConversationOrchestrator:
         if self._current_speech_task and not self._current_speech_task.done():
             self._current_speech_task.cancel()
             self._current_speech_task = None
+
+        if self._current_orchestration_cancel_event and not self._current_orchestration_cancel_event.is_set():
+            self._current_orchestration_cancel_event.set()
 
         # Drain outbound queue to stop audio playback on telephone line
         while not self.outbound_queue.empty():
@@ -395,6 +403,74 @@ class ConversationOrchestrator:
             )
         except Exception as e:
             logger.error(f"Error in adaptive planning for {self.session_id}: {e}")
+
+        # 8. Phase 9: Multi-Agent Orchestration Coordination
+        try:
+            from app.orchestration.service import multi_agent_orchestrator
+
+            self._current_orchestration_cancel_event = asyncio.Event()
+
+            orch_context = {
+                "transcript": event.text,
+                "text": event.text,
+                "language": self.current_language.value,
+                "history": [
+                    {
+                        "speaker": u.speaker.value if hasattr(u.speaker, "value") else str(u.speaker),
+                        "text": u.text,
+                    }
+                    for u in self.utterances
+                ],
+                "safety_state": self.current_safety_state,
+                "safety_evaluation": (
+                    self.safety_assessments[-1].model_dump()
+                    if (self.safety_assessments and hasattr(self.safety_assessments[-1], "model_dump"))
+                    else {}
+                ),
+                "acoustic_features": (
+                    acoustic_assessment.model_dump()
+                    if (acoustic_assessment and hasattr(acoustic_assessment, "model_dump"))
+                    else {}
+                ),
+                "svi": (
+                    self.latest_svi.model_dump()
+                    if (self.latest_svi and hasattr(self.latest_svi, "model_dump"))
+                    else {}
+                ),
+                "adaptive": (
+                    strategy.model_dump()
+                    if (strategy and hasattr(strategy, "model_dump"))
+                    else {}
+                ),
+            }
+
+            async def _orch_callback(ev_type: str, payload: Dict[str, Any]):
+                self.broadcast(ev_type, payload)
+
+            orch_result = await multi_agent_orchestrator.orchestrate_turn(
+                call_id=self.call_id,
+                turn_id=utterance.utterance_id,
+                context=orch_context,
+                safety_state=self.current_safety_state,
+                cancel_event=self._current_orchestration_cancel_event,
+                event_callback=_orch_callback,
+            )
+            self.latest_orchestration = orch_result
+            self.orchestration_results.append(orch_result)
+
+            if orch_result.briefing:
+                self.broadcast(
+                    "OPERATOR_BRIEFING_GENERATED",
+                    {
+                        "call_id": self.call_id,
+                        "turn_id": utterance.utterance_id,
+                        "briefing": orch_result.briefing.model_dump(),
+                        "orchestration_state": orch_result.state.value,
+                        "total_latency_ms": orch_result.total_latency_ms,
+                    },
+                )
+        except Exception as e:
+            logger.error(f"Error in multi-agent orchestration for {self.session_id}: {e}")
 
         # If agent was speaking when final transcript landed, ensure interruption was performed
         if self.state == ConversationState.SPEAKING:

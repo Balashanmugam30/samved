@@ -61,6 +61,17 @@ export enum EventType {
   OPERATOR_CALL_ENDED = "OPERATOR_CALL_ENDED",
   OPERATOR_STATE_CHANGED = "OPERATOR_STATE_CHANGED",
 
+  // Multi-Agent Orchestration (Phase 9)
+  ORCHESTRATION_STARTED = "ORCHESTRATION_STARTED",
+  ORCHESTRATION_COMPLETED = "ORCHESTRATION_COMPLETED",
+  ORCHESTRATION_DEGRADED = "ORCHESTRATION_DEGRADED",
+  AGENT_STARTED = "AGENT_STARTED",
+  AGENT_COMPLETED = "AGENT_COMPLETED",
+  AGENT_FAILED = "AGENT_FAILED",
+  AGENT_TIMEOUT = "AGENT_TIMEOUT",
+  AGENT_CANCELLED = "AGENT_CANCELLED",
+  OPERATOR_BRIEFING_GENERATED = "OPERATOR_BRIEFING_GENERATED",
+
   // Case & follow-up
   CASE_CREATED = "CASE_CREATED",
   FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED",
@@ -263,3 +274,100 @@ export interface OperatorStateChangedPayload {
   active_operator_id?: string | null;
   updated_at: string;
 }
+
+// Phase 9 Multi-Agent Orchestration Enums & Contracts
+export enum AgentType {
+  DETERMINISTIC_ADAPTER = "DETERMINISTIC_ADAPTER",
+  RULE_WORKER = "RULE_WORKER",
+  LLM_WORKER = "LLM_WORKER",
+  FORMATTER = "FORMATTER",
+  SUMMARIZER = "SUMMARIZER",
+  INTERFACE_STUB = "INTERFACE_STUB"
+}
+
+export enum AgentSafetyClassification {
+  READ_ONLY_SAFETY = "READ_ONLY_SAFETY",
+  OPERATIONAL = "OPERATIONAL",
+  ADVISORY = "ADVISORY",
+  NON_CRITICAL = "NON_CRITICAL",
+  PLACEHOLDER = "PLACEHOLDER"
+}
+
+export enum AgentTimeoutTier {
+  REALTIME_CRITICAL = "REALTIME_CRITICAL",
+  REALTIME_NORMAL = "REALTIME_NORMAL",
+  BACKGROUND = "BACKGROUND"
+}
+
+export enum AgentStatus {
+  SUCCESS = "SUCCESS",
+  FAILED = "FAILED",
+  TIMED_OUT = "TIMED_OUT",
+  CANCELLED = "CANCELLED",
+  DEGRADED = "DEGRADED",
+  UNAVAILABLE = "UNAVAILABLE"
+}
+
+export enum OrchestrationState {
+  READY = "READY",
+  RUNNING = "RUNNING",
+  COMPLETED = "COMPLETED",
+  DEGRADED = "DEGRADED",
+  FAILED = "FAILED"
+}
+
+export interface AgentSpecPayload {
+  name: string;
+  version: string;
+  agent_type: AgentType;
+  capabilities: string[];
+  timeout_tier: AgentTimeoutTier;
+  max_latency_ms: number;
+  safety_classification: AgentSafetyClassification;
+  requires_human_review: boolean;
+  is_realtime_capable: boolean;
+  enabled: boolean;
+}
+
+export interface AgentResponsePayload {
+  request_id: string;
+  call_id: string;
+  turn_id: string;
+  agent_name: string;
+  agent_version: string;
+  status: AgentStatus;
+  result: Record<string, unknown>;
+  confidence: number;
+  evidence_refs: string[];
+  latency_ms: number;
+  warnings?: string[];
+  produced_at: string;
+}
+
+export interface OperatorBriefingPayload {
+  safety_summary: string;
+  svi_summary: string;
+  acoustic_summary: string;
+  adaptive_recommendation: string;
+  key_facts: string[];
+  evidence_refs: string[];
+  confidence: number;
+  generated_at: string;
+}
+
+export interface OrchestrationResultPayload {
+  request_id: string;
+  call_id: string;
+  turn_id: string;
+  state: OrchestrationState;
+  selected_agents: string[];
+  completed_agents: string[];
+  failed_agents: string[];
+  timed_out_agents: string[];
+  cancelled_agents: string[];
+  briefing?: OperatorBriefingPayload;
+  total_latency_ms: number;
+  warnings?: string[];
+  completed_at: string;
+}
+

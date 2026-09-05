@@ -1,6 +1,8 @@
 import { test, expect, Page } from "@playwright/test";
 
 async function setupMockCall(page: Page, mockCallId = "call-svi-test-01") {
+  await page.route("**/ws/operator", (route) => route.abort());
+
   await page.route("**/v1/calls", async (route) => {
     await route.fulfill({
       status: 200,

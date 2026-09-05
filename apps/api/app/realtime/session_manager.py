@@ -90,6 +90,10 @@ class TelephonySession:
         self.active_operator_id: Optional[str] = None
         self.operator_notes_count: int = 0
 
+        # Phase 9 Multi-Agent Orchestration
+        self.latest_orchestration: Optional[Dict[str, Any]] = None
+        self.orchestration_history: List[Dict[str, Any]] = []
+
         # Metrics and sequence validation
         self.last_sequence_number: int = 0
         self.inbound_frames_count: int = 0
@@ -153,8 +157,26 @@ class TelephonySession:
                     self.operator_ownership_state = "ENDED"
                 elif "OPERATOR_NOTE_ADDED" in ev_type_str:
                     self.operator_notes_count += 1
+                elif "ORCHESTRATION_COMPLETED" in ev_type_str or "ORCHESTRATION_DEGRADED" in ev_type_str:
+                    orch_payload = dumped.get("payload", {})
+                    self.latest_orchestration = orch_payload
+                    self.orchestration_history.append(orch_payload)
         except Exception as e:
             logger.error(f"Error recording event in session {self.session_id}: {e}")
+
+    def record_orchestration_result(self, result: Any) -> None:
+        """Stores Orchestration result in session history."""
+        dumped = result.model_dump() if hasattr(result, "model_dump") else result
+        self.latest_orchestration = dumped
+        self.orchestration_history.append(dumped)
+
+    def get_latest_orchestration(self) -> Optional[Dict[str, Any]]:
+        """Returns latest orchestration result dictionary."""
+        return self.latest_orchestration
+
+    def get_orchestration_history(self) -> List[Dict[str, Any]]:
+        """Returns complete orchestration history list."""
+        return list(self.orchestration_history)
 
     def record_svi_assessment(self, assessment: Any) -> None:
         """Stores SVI assessment in session history."""
@@ -289,6 +311,9 @@ class TelephonySession:
             "adaptive_paused": self.adaptive_paused,
             "active_operator_id": self.active_operator_id,
             "notes_count": self.operator_notes_count,
+            "latest_orchestration": self.latest_orchestration,
+            "orchestration_state": self.latest_orchestration.get("state") if self.latest_orchestration else "READY",
+            "orchestration_briefing": self.latest_orchestration.get("briefing") if self.latest_orchestration else None,
             "utterances_count": len(utts),
             "events_count": len(self.event_history),
             "is_active": self.state_machine.is_active,

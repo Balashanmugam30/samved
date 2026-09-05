@@ -61,6 +61,17 @@ class EventType(str, Enum):
     OPERATOR_CALL_ENDED = "OPERATOR_CALL_ENDED"
     OPERATOR_STATE_CHANGED = "OPERATOR_STATE_CHANGED"
 
+    # Multi-Agent Orchestration (Phase 9)
+    ORCHESTRATION_STARTED = "ORCHESTRATION_STARTED"
+    ORCHESTRATION_COMPLETED = "ORCHESTRATION_COMPLETED"
+    ORCHESTRATION_DEGRADED = "ORCHESTRATION_DEGRADED"
+    AGENT_STARTED = "AGENT_STARTED"
+    AGENT_COMPLETED = "AGENT_COMPLETED"
+    AGENT_FAILED = "AGENT_FAILED"
+    AGENT_TIMEOUT = "AGENT_TIMEOUT"
+    AGENT_CANCELLED = "AGENT_CANCELLED"
+    OPERATOR_BRIEFING_GENERATED = "OPERATOR_BRIEFING_GENERATED"
+
     # Case & follow-up
     CASE_CREATED = "CASE_CREATED"
     FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED"
@@ -231,4 +242,94 @@ class OperatorStateChangedPayload(BaseModel):
     updated_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+
+
+# Phase 9 Multi-Agent Orchestration Enums & Contracts
+class AgentType(str, Enum):
+    DETERMINISTIC_ADAPTER = "DETERMINISTIC_ADAPTER"
+    RULE_WORKER = "RULE_WORKER"
+    LLM_WORKER = "LLM_WORKER"
+    FORMATTER = "FORMATTER"
+    SUMMARIZER = "SUMMARIZER"
+    INTERFACE_STUB = "INTERFACE_STUB"
+
+
+class AgentSafetyClassification(str, Enum):
+    READ_ONLY_SAFETY = "READ_ONLY_SAFETY"
+    OPERATIONAL = "OPERATIONAL"
+    ADVISORY = "ADVISORY"
+    NON_CRITICAL = "NON_CRITICAL"
+    PLACEHOLDER = "PLACEHOLDER"
+
+
+class AgentTimeoutTier(str, Enum):
+    REALTIME_CRITICAL = "REALTIME_CRITICAL"
+    REALTIME_NORMAL = "REALTIME_NORMAL"
+    BACKGROUND = "BACKGROUND"
+
+
+class AgentStatus(str, Enum):
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    TIMED_OUT = "TIMED_OUT"
+    CANCELLED = "CANCELLED"
+    DEGRADED = "DEGRADED"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+class OrchestrationState(str, Enum):
+    READY = "READY"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    DEGRADED = "DEGRADED"
+    FAILED = "FAILED"
+
+
+class AgentResponsePayload(BaseModel):
+    request_id: str
+    call_id: str
+    turn_id: str
+    agent_name: str
+    agent_version: str
+    status: AgentStatus
+    result: Dict[str, Any] = Field(default_factory=dict)
+    confidence: float = 1.0
+    evidence_refs: List[str] = Field(default_factory=list)
+    latency_ms: float = 0.0
+    warnings: List[str] = Field(default_factory=list)
+    produced_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+class OperatorBriefingPayload(BaseModel):
+    safety_summary: str
+    svi_summary: str
+    acoustic_summary: str
+    adaptive_recommendation: str
+    key_facts: List[str] = Field(default_factory=list)
+    evidence_refs: List[str] = Field(default_factory=list)
+    confidence: float = 1.0
+    generated_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+class OrchestrationResultPayload(BaseModel):
+    request_id: str
+    call_id: str
+    turn_id: str
+    state: OrchestrationState
+    selected_agents: List[str] = Field(default_factory=list)
+    completed_agents: List[str] = Field(default_factory=list)
+    failed_agents: List[str] = Field(default_factory=list)
+    timed_out_agents: List[str] = Field(default_factory=list)
+    cancelled_agents: List[str] = Field(default_factory=list)
+    briefing: Optional[OperatorBriefingPayload] = None
+    total_latency_ms: float = 0.0
+    warnings: List[str] = Field(default_factory=list)
+    completed_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
 

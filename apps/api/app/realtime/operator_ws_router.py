@@ -14,21 +14,35 @@ logger = logging.getLogger("samved.realtime.operator")
 operator_ws_router = APIRouter(tags=["Operator WebSocket"])
 
 
+MAX_WS_FRAME_BYTES = 65536  # 64 KB maximum payload frame
+
+
 @operator_ws_router.websocket("/ws/operator")
 async def operator_websocket_endpoint(
     websocket: WebSocket,
     call_id: Optional[str] = Query(default=None),
+    role: Optional[str] = Query(default="OPERATOR"),
+    user_id: Optional[str] = Query(default=None),
 ):
     """Dedicated real-time WebSocket endpoint for human operators and supervisor consoles.
 
-    Sends domain, conversation, transcript, and latency events without raw audio frames.
+    Enforces frame size bounds (<= 64KB), connection message rate limiting (10 msg/s),
+    and authorized role validation.
     """
+    from app.security.rate_limit import get_rate_limiter
+    from app.security.rbac import normalize_role, UserRole
+    from app.security.audit import get_audit_service
+
+    norm_role = normalize_role(role or "OPERATOR")
+    client_uid = user_id or f"op-conn-{id(websocket)}"
+    rate_limiter = get_rate_limiter()
+
     await websocket.accept()
     manager.register_operator(websocket, call_id=call_id)
     settings = get_settings()
 
     logger.info(
-        f"Operator connected to /ws/operator (initial filter: {call_id or 'ALL'}). Total operators: {manager.total_operators}"
+        f"Operator {client_uid} ({norm_role.value}) connected to /ws/operator (filter: {call_id or 'ALL'}). Total operators: {manager.total_operators}"
     )
 
     try:
@@ -45,6 +59,7 @@ async def operator_websocket_endpoint(
                 "total_active": calls_data["total_active"],
                 "total_recent": calls_data["total_recent"],
                 "total_operators": manager.total_operators,
+                "role": norm_role.value,
                 "connected_at": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -53,6 +68,35 @@ async def operator_websocket_endpoint(
         # 2. Inbound Operator Action Loop
         while True:
             raw_data = await websocket.receive_text()
+
+            # Frame size guard (64 KB)
+            if len(raw_data.encode("utf-8")) > MAX_WS_FRAME_BYTES:
+                logger.warning(f"Frame size violation ({len(raw_data)} bytes) from {client_uid}")
+                err_env = EventEnvelope(
+                    event_type=EventType.SECURITY_RATE_LIMITED,
+                    session_id="operator-session",
+                    call_id=call_id or "global",
+                    payload={"error": "FRAME_SIZE_EXCEEDED", "max_bytes": MAX_WS_FRAME_BYTES},
+                )
+                await websocket.send_text(err_env.model_dump_json())
+                continue
+
+            # Inbound rate limit: 10 msgs / sec
+            rl_res = rate_limiter.check(f"ws_msg:{client_uid}", limit=10, window_seconds=1)
+            if not rl_res.allowed:
+                err_env = EventEnvelope(
+                    event_type=EventType.SECURITY_RATE_LIMITED,
+                    session_id="operator-session",
+                    call_id=call_id or "global",
+                    payload={
+                        "error": "RATE_LIMITED",
+                        "message": "Too many WebSocket frames; limit is 10 msgs/sec",
+                        "retry_after": rl_res.retry_after_seconds,
+                    },
+                )
+                await websocket.send_text(err_env.model_dump_json())
+                continue
+
             try:
                 data = json.loads(raw_data)
             except (json.JSONDecodeError, TypeError):

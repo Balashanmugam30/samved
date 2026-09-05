@@ -8,7 +8,7 @@ from app.api.v1.router import api_v1_router
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import setup_logging
-from app.core.middleware import RequestContextMiddleware
+from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.realtime.websocket_router import ws_router
 from app.realtime.telephony_ws_router import telephony_ws_router
 from app.realtime.operator_ws_router import operator_ws_router
@@ -50,6 +50,9 @@ app.add_middleware(
 
 # 2. Correlation ID & Latency Middleware
 app.add_middleware(RequestContextMiddleware)
+
+# 2b. Security & Protection Headers Middleware
+app.add_middleware(SecurityHeadersMiddleware)
 
 # 3. Global Exception Handlers
 register_error_handlers(app)

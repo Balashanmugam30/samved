@@ -141,6 +141,12 @@ class EventType(str, Enum):
     EVALUATION_RUN_CANCELLED = "EVALUATION_RUN_CANCELLED"
     EVALUATION_RUN_FAILED = "EVALUATION_RUN_FAILED"
 
+    # Security, Privacy & Governance (Phase 15)
+    SECURITY_AUDIT_LOGGED = "SECURITY_AUDIT_LOGGED"
+    SECURITY_ACCESS_DENIED = "SECURITY_ACCESS_DENIED"
+    SECURITY_RATE_LIMITED = "SECURITY_RATE_LIMITED"
+    SECURITY_PII_REDACTED = "SECURITY_PII_REDACTED"
+
     # Heartbeat
     HEARTBEAT_PING = "HEARTBEAT_PING"
     HEARTBEAT_PONG = "HEARTBEAT_PONG"
@@ -1366,5 +1372,101 @@ class EvaluationRunPayload(BaseModel):
     metrics: SubsystemMetrics = Field(default_factory=SubsystemMetrics)
     events_count: int = 0
     baseline_diff: Optional[RunDiffResult] = None
+
+
+# ============================================================================
+# Phase 15: Security, Privacy & Governance Hardening Models
+# ============================================================================
+
+
+class UserRole(str, Enum):
+    OPERATOR = "OPERATOR"
+    SUPERVISOR = "SUPERVISOR"
+    DISTRICT_ADMIN = "DISTRICT_ADMIN"
+    SYSTEM_ADMIN = "SYSTEM_ADMIN"
+    AUDITOR = "AUDITOR"
+
+
+class UserIdentity(BaseModel):
+    user_id: str
+    username: str
+    role: UserRole = UserRole.OPERATOR
+    district_code: Optional[str] = None
+    assigned_districts: List[str] = Field(default_factory=list)
+    permissions: List[str] = Field(default_factory=list)
+
+
+class AuditStatusResult(str, Enum):
+    ALLOWED = "ALLOWED"
+    DENIED = "DENIED"
+    MUTATED = "MUTATED"
+    FLAGGED = "FLAGGED"
+
+
+class SecurityAuditEntry(BaseModel):
+    audit_id: str = Field(default_factory=lambda: f"AUD-{uuid.uuid4().hex[:10]}")
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    actor_id: str
+    actor_role: UserRole
+    action: str
+    resource_type: str
+    resource_id: str
+    district_code: Optional[str] = None
+    status_result: AuditStatusResult = AuditStatusResult.ALLOWED
+    ip_address: Optional[str] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
+    prev_hash: Optional[str] = None
+    entry_hash: str = ""
+
+
+class PIIRedactionResult(BaseModel):
+    scrubbed_text: str
+    redactions_count: int = 0
+    redaction_types: List[str] = Field(default_factory=list)
+    has_pii: bool = False
+
+
+class SecurityControlCategory(str, Enum):
+    AUTHENTICATION = "AUTHENTICATION"
+    AUTHORIZATION = "AUTHORIZATION"
+    DATA_PROTECTION = "DATA_PROTECTION"
+    AUDITABILITY = "AUDITABILITY"
+    ABUSE_RESISTANCE = "ABUSE_RESISTANCE"
+    GOVERNANCE = "GOVERNANCE"
+
+
+class SecurityControlHealth(str, Enum):
+    OPERATIONAL = "OPERATIONAL"
+    DEGRADED = "DEGRADED"
+    STANDBY = "STANDBY"
+    DISABLED = "DISABLED"
+
+
+class SecurityControlStatus(BaseModel):
+    control_id: str
+    name: str
+    category: SecurityControlCategory
+    status: SecurityControlHealth = SecurityControlHealth.OPERATIONAL
+    description: str
+    last_verified_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DataRetentionPurgeStrategy(str, Enum):
+    HARD_DELETE = "HARD_DELETE"
+    ANONYMIZE = "ANONYMIZE"
+    ARCHIVE_COLD = "ARCHIVE_COLD"
+
+
+class DataRetentionPolicy(BaseModel):
+    policy_id: str = Field(default_factory=lambda: f"RET-{uuid.uuid4().hex[:8]}")
+    data_category: str
+    retention_days: int
+    purge_strategy: DataRetentionPurgeStrategy = DataRetentionPurgeStrategy.ANONYMIZE
+    requires_supervisor_approval: bool = True
+    is_active: bool = True
+    last_purge_at: Optional[str] = None
+    records_purged_count: int = 0
+
 
 

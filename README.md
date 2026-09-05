@@ -31,6 +31,7 @@ When a victim, concerned family member, or at-risk citizen calls the national he
 9. **Follow-up Workflow & Continuity Engine**: Manages human-supervised, consent-verified scheduled check-ins, referrals, and care continuity with safe contact windows, attempt caps, bounded recurrence, and zero autonomous robot-dialing.
 10. **District Intelligence & Operational Analytics**: Provides aggregated, privacy-preserving operational analytics for helpline capacity planners without exposing individual caller data, enforcing K-Anonymity ($k \ge 10$), small-cell suppression, and zero predictive policing.
 11. **Scenario Simulation Engine & Operator Training Sandbox**: Continuous automated benchmarking across 24 calibrated synthetic scenarios in 11 Indic languages, Wagner-Fischer Indic ASR WER/CER evaluation, deterministic 100% safety recall verification ($\text{Recall} = 1.00$), and an interactive tele-counselor training simulator with real-time SOP scoring.
+12. **Security, Privacy & Governance Hardening**: Enterprise least-privilege RBAC with 5 granular personas, object-level scope & district isolation (IDOR protection), synthetic simulation quarantine, Indian entity PII redaction pipeline (Aadhaar, PAN, phone numbers, emails, bank accounts), SHA-256 chained tamper-evident audit ledger, adaptive rate limiting, 64KB WebSocket frame bounds, security headers middleware, and data retention lifecycle management.
 
 ---
 

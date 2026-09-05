@@ -14,6 +14,7 @@ from app.api.v1.followups import router as followups_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.simulation import router as simulation_router
 from app.api.v1.evaluation import router as evaluation_router
+from app.api.v1.security import security_router
 
 api_v1_router = APIRouter(prefix="/v1")
 api_v1_router.include_router(health_router)
@@ -31,6 +32,8 @@ api_v1_router.include_router(followups_router)
 api_v1_router.include_router(analytics_router, prefix="/analytics")
 api_v1_router.include_router(simulation_router, prefix="/simulation")
 api_v1_router.include_router(evaluation_router, prefix="/evaluation")
+api_v1_router.include_router(security_router, prefix="/security")
+
 
 
 

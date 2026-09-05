@@ -143,6 +143,12 @@ export enum EventType {
   EVALUATION_RUN_CANCELLED = "EVALUATION_RUN_CANCELLED",
   EVALUATION_RUN_FAILED = "EVALUATION_RUN_FAILED",
 
+  // Security, Privacy & Governance (Phase 15)
+  SECURITY_AUDIT_LOGGED = "SECURITY_AUDIT_LOGGED",
+  SECURITY_ACCESS_DENIED = "SECURITY_ACCESS_DENIED",
+  SECURITY_RATE_LIMITED = "SECURITY_RATE_LIMITED",
+  SECURITY_PII_REDACTED = "SECURITY_PII_REDACTED",
+
   // Heartbeat / ping-pong
   HEARTBEAT_PING = "HEARTBEAT_PING",
   HEARTBEAT_PONG = "HEARTBEAT_PONG"
@@ -1385,5 +1391,85 @@ export interface EvaluationRunPayload {
   events_count: number;
   baseline_diff?: RunDiffResult | null;
 }
+
+// ============================================================================
+// Phase 15: Security, Privacy & Governance Hardening
+// ============================================================================
+
+export enum UserRole {
+  OPERATOR = "OPERATOR",
+  SUPERVISOR = "SUPERVISOR",
+  DISTRICT_ADMIN = "DISTRICT_ADMIN",
+  SYSTEM_ADMIN = "SYSTEM_ADMIN",
+  AUDITOR = "AUDITOR",
+}
+
+export interface UserIdentity {
+  user_id: string;
+  username: string;
+  role: UserRole;
+  district_code?: string | null;
+  assigned_districts?: string[];
+  permissions: string[];
+}
+
+export type AuditStatusResult = "ALLOWED" | "DENIED" | "MUTATED" | "FLAGGED";
+
+export interface SecurityAuditEntry {
+  audit_id: string;
+  timestamp: string;
+  actor_id: string;
+  actor_role: UserRole;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  district_code?: string | null;
+  status_result: AuditStatusResult;
+  ip_address?: string | null;
+  details: Record<string, unknown>;
+  prev_hash?: string | null;
+  entry_hash: string;
+}
+
+export interface PIIRedactionResult {
+  scrubbed_text: string;
+  redactions_count: number;
+  redaction_types: string[];
+  has_pii: boolean;
+}
+
+export type SecurityControlCategory =
+  | "AUTHENTICATION"
+  | "AUTHORIZATION"
+  | "DATA_PROTECTION"
+  | "AUDITABILITY"
+  | "ABUSE_RESISTANCE"
+  | "GOVERNANCE";
+
+export type SecurityControlHealth = "OPERATIONAL" | "DEGRADED" | "STANDBY" | "DISABLED";
+
+export interface SecurityControlStatus {
+  control_id: string;
+  name: string;
+  category: SecurityControlCategory;
+  status: SecurityControlHealth;
+  description: string;
+  last_verified_at: string;
+  metrics?: Record<string, unknown>;
+}
+
+export type DataRetentionPurgeStrategy = "HARD_DELETE" | "ANONYMIZE" | "ARCHIVE_COLD";
+
+export interface DataRetentionPolicy {
+  policy_id: string;
+  data_category: string;
+  retention_days: number;
+  purge_strategy: DataRetentionPurgeStrategy;
+  requires_supervisor_approval: boolean;
+  is_active: boolean;
+  last_purge_at?: string | null;
+  records_purged_count?: number;
+}
+
 
 

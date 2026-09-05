@@ -14,6 +14,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application source
 COPY apps/api/app ./app
 
+# Phase 15 Hardening: Create unprivileged user and drop root privileges
+RUN useradd -u 10001 -d /app -s /bin/false samved \
+    && chown -R samved:samved /app
+
+USER samved
+
 EXPOSE 8000
 
 ENV APP_ENV=production
@@ -21,3 +27,4 @@ ENV APP_MODE=DEV
 ENV PYTHONUNBUFFERED=1
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+

@@ -67,6 +67,12 @@ const navItems: NavItem[] = [
     phaseBadge: "Phase 14",
   },
   {
+    label: "Security & Governance",
+    href: "/security",
+    icon: ShieldCheck,
+    phaseBadge: "Phase 15",
+  },
+  {
     label: "Audit Trail",
     href: "/audit",
     icon: FileCheck,

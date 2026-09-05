@@ -21,11 +21,16 @@ class JSONLogFormatter(logging.Formatter):
     }
 
     def format(self, record: logging.LogRecord) -> str:
+        raw_msg = record.getMessage()
+        from app.security.pii import PIIScrubber
+
+        scrubbed_msg = PIIScrubber.redact_text(raw_msg).scrubbed_text
+
         log_obj: Dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": scrubbed_msg,
             "service": "samved-api",
         }
 
@@ -37,13 +42,13 @@ class JSONLogFormatter(logging.Formatter):
         if hasattr(record, "call_id"):
             log_obj["call_id"] = record.call_id
         if hasattr(record, "extra_data") and isinstance(record.extra_data, dict):
-            # Scrub sensitive keys
+            # Scrub sensitive keys and scrub PII in values
             clean_extra = {}
             for k, v in record.extra_data.items():
                 if any(s in k.lower() for s in self.SENSITIVE_KEYS):
                     clean_extra[k] = "[REDACTED]"
                 else:
-                    clean_extra[k] = v
+                    clean_extra[k] = PIIScrubber.scrub_dict(v)
             log_obj["data"] = clean_extra
 
         if record.exc_info:

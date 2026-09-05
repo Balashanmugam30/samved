@@ -680,4 +680,48 @@ curl -X POST http://localhost:8000/v1/evaluation/diff \
    - Enter deterministic seed (e.g. `42`).
    - Click `Execute Suite` to run batch benchmark evaluation.
 
+---
 
+## 13. Phase 15: Security, Privacy & Governance Hardening
+
+### 13.1 Security Status & Living Controls Inventory
+```bash
+# Check security posture and subsystem health
+curl http://localhost:8000/v1/security/status
+
+# List all 11 active security & governance controls
+curl http://localhost:8000/v1/security/controls
+```
+
+### 13.2 Verify SHA-256 Cryptographic Audit Trail
+```bash
+# Verify cryptographic hash chaining across all log entries
+curl http://localhost:8000/v1/security/audit/verify \
+  -H "X-User-Role: SUPERVISOR" \
+  -H "X-User-Id: usr-supervisor-01"
+
+# Query audit trail entries with role scoping
+curl "http://localhost:8000/v1/security/audit?limit=10" \
+  -H "X-User-Role: SUPERVISOR"
+```
+
+### 13.3 Test Indian PII Redaction Pipeline
+```bash
+curl -X POST http://localhost:8000/v1/security/pii/redact \
+  -H "Content-Type: application/json" \
+  -H "X-User-Role: OPERATOR" \
+  -d '{
+    "text": "Caller mobile is +91-9876543210, Aadhaar is 2345 6789 0123, PAN is ABCDE1234F, bank A/C 123456789012."
+  }'
+```
+
+### 13.4 Web Console Verification
+1. **Security & Governance Dashboard** (`http://localhost:3000/security`):
+   - Observe posture KPI cards (`HEALTHY`, `SHA-256 VALID`, `ACTIVE`).
+   - Switch personas using the **Active RBAC Persona** switcher (`OPERATOR`, `SUPERVISOR`, `DISTRICT_ADMIN`, `SYSTEM_ADMIN`, `AUDITOR`).
+   - Test the **Indian PII Redaction Lab** with preset or custom text.
+   - Inspect the **RBAC & IDOR Matrix** and **Data Retention** policies.
+2. **Audit Trail Explorer** (`http://localhost:3000/audit`):
+   - Click **Verify SHA-256 Chain** to execute cryptographic integrity verification.
+   - Filter entries by actor, action, district, or status (`ALLOWED`, `MUTATED`, `DENIED`).
+   - Click any row to expand the full JSON event payload and cryptographic hash hashes.

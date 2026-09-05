@@ -103,13 +103,18 @@ CREATE TABLE IF NOT EXISTS recommendations (
 
 -- 7. Audit Logs & Model Runs
 CREATE TABLE IF NOT EXISTS audit_logs (
-    id VARCHAR(36) PRIMARY KEY,
-    actor_id VARCHAR(36),
+    id VARCHAR(64) PRIMARY KEY,
+    actor_id VARCHAR(64),
+    actor_role VARCHAR(50) DEFAULT 'OPERATOR',
     action VARCHAR(100) NOT NULL,
     resource_type VARCHAR(100) NOT NULL,
     resource_id VARCHAR(100) NOT NULL,
+    district_code VARCHAR(50),
+    status_result VARCHAR(30) DEFAULT 'ALLOWED',
     ip_address VARCHAR(45),
-    details JSONB,
+    details JSONB DEFAULT '{}'::jsonb,
+    prev_hash VARCHAR(64),
+    entry_hash VARCHAR(64),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -768,6 +773,44 @@ CREATE INDEX IF NOT EXISTS idx_eval_assertions_run ON evaluation_assertions(run_
 CREATE INDEX IF NOT EXISTS idx_eval_findings_run ON evaluation_findings(run_id, severity);
 CREATE INDEX IF NOT EXISTS idx_eval_baselines_scenario ON evaluation_baselines(scenario_id, scenario_version);
 CREATE INDEX IF NOT EXISTS idx_eval_events_run ON evaluation_events(run_id, timestamp);
+
+-- ============================================================================
+-- Phase 15: Security, Privacy & Governance Hardening Tables
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS security_retention_policies (
+    policy_id VARCHAR(64) PRIMARY KEY,
+    data_category VARCHAR(64) UNIQUE NOT NULL,
+    retention_days INT NOT NULL,
+    purge_strategy VARCHAR(30) NOT NULL DEFAULT 'ANONYMIZE',
+    requires_supervisor_approval BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_purge_at TIMESTAMPTZ,
+    records_purged_count INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id, actor_role);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_district ON audit_logs(district_code);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+
+-- Seed Phase 15 default data retention policies
+INSERT INTO security_retention_policies (policy_id, data_category, retention_days, purge_strategy, requires_supervisor_approval, is_active)
+VALUES
+    ('ret-raw-audio', 'RAW_AUDIO', 30, 'HARD_DELETE', TRUE, TRUE),
+    ('ret-transcript', 'TRANSCRIPTS', 90, 'ANONYMIZE', TRUE, TRUE),
+    ('ret-analytics-agg', 'ANALYTICS_AGGREGATES', 365, 'ANONYMIZE', FALSE, TRUE),
+    ('ret-audit-logs', 'AUDIT_LOGS', 730, 'ARCHIVE_COLD', TRUE, TRUE),
+    ('ret-training-runs', 'TRAINING_RUNS', 180, 'HARD_DELETE', FALSE, TRUE)
+ON CONFLICT (data_category) DO NOTHING;
+
+-- Ensure SYSTEM_ADMIN role is seeded
+INSERT INTO roles (id, name, permissions) VALUES
+    ('role-system-admin', 'SYSTEM_ADMIN', '["*"]'::jsonb)
+ON CONFLICT (name) DO NOTHING;
+
 
 
 

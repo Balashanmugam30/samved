@@ -41,7 +41,7 @@ jobs:
 
       - name: Validate Docker Compose Configuration
         run: docker compose config
-        working-directory: ../..
+        working-directory: ${{ github.workspace }}
 
   frontend-checks:
     name: Frontend Type Check & Build

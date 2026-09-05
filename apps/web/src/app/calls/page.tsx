@@ -38,9 +38,27 @@ import {
   Search,
   ExternalLink,
   BookmarkPlus,
+  Calendar,
+  CalendarCheck,
+  CalendarClock,
+  UserCheck,
+  History,
+  Ban,
 } from "lucide-react";
 import { useOperatorWebSocket } from "@/hooks/useOperatorWebSocket";
-import { EventEnvelope, EventType } from "@samved/schemas";
+import {
+  EventEnvelope,
+  EventType,
+  FollowupType,
+  FollowupStatus,
+  ConsentState,
+  FollowupPriority,
+  ContactChannel,
+  ContactResult,
+  FollowupOutcome,
+  FollowupPayload,
+  FollowupWorkqueueSummaryPayload,
+} from "@samved/schemas";
 
 interface SafetyEvidence {
   rule_id: string;
@@ -193,7 +211,8 @@ type EventFilterCategory =
   | "ADAPTIVE"
   | "ORCHESTRATION"
   | "KNOWLEDGE"
-  | "CASE";
+  | "CASE"
+  | "FOLLOWUP";
 
 
 export default function OperatorCallsPage() {
@@ -262,6 +281,106 @@ export default function OperatorCallsPage() {
   const [candidateActionLoading, setCandidateActionLoading] = useState<string | null>(null);
   const [showCaseAuditModal, setShowCaseAuditModal] = useState<boolean>(false);
   const [caseAuditLogs, setCaseAuditLogs] = useState<any[]>([]);
+
+  // Phase 12: Follow-up Workflow & Continuity Engine State
+  const [followups, setFollowups] = useState<FollowupPayload[]>([
+    {
+      followup_id: "fol-1001",
+      case_id: "case-1001",
+      call_id: "call-fixture-01",
+      created_by: "operator_1",
+      assigned_to: "operator_1",
+      type: FollowupType.CHECK_IN,
+      status: FollowupStatus.SCHEDULED,
+      priority: FollowupPriority.NORMAL,
+      requested_at: "2026-03-31T10:00:00Z",
+      scheduled_for: new Date(Date.now() + 86400000).toISOString(),
+      due_at: new Date(Date.now() + 172800000).toISOString(),
+      consent_state: ConsentState.GRANTED,
+      contact_preferences: {
+        preferred_channel: ContactChannel.OPERATOR_CALLBACK,
+        safe_to_contact: true,
+        human_only: true,
+        preferred_time_window: "09:00-12:00",
+        no_voicemail: true,
+        no_text: false,
+      },
+      safe_contact_window: "09:00-12:00",
+      channel: ContactChannel.OPERATOR_CALLBACK,
+      purpose: "Safety check-in regarding overnight shelter arrangement",
+      attempt_count: 0,
+      max_attempts: 3,
+      policy_version: "2026.03.v1",
+      created_at: "2026-03-31T10:00:00Z",
+      updated_at: "2026-03-31T10:00:00Z",
+    },
+    {
+      followup_id: "fol-1002",
+      case_id: "case-1001",
+      call_id: "call-fixture-01",
+      created_by: "operator_1",
+      assigned_to: "operator_1",
+      type: FollowupType.RESOURCE_FOLLOW_UP,
+      status: FollowupStatus.READY,
+      priority: FollowupPriority.HIGH,
+      requested_at: "2026-03-31T09:00:00Z",
+      scheduled_for: new Date().toISOString(),
+      due_at: new Date(Date.now() + 86400000).toISOString(),
+      consent_state: ConsentState.GRANTED,
+      contact_preferences: {
+        preferred_channel: ContactChannel.PHONE,
+        safe_to_contact: true,
+        human_only: true,
+        preferred_time_window: "14:00-18:00",
+        no_voicemail: true,
+        no_text: false,
+      },
+      safe_contact_window: "14:00-18:00",
+      channel: ContactChannel.PHONE,
+      purpose: "Provide verified legal aid contact number for Protection Officer",
+      attempt_count: 0,
+      max_attempts: 3,
+      policy_version: "2026.03.v1",
+      created_at: "2026-03-31T09:00:00Z",
+      updated_at: "2026-03-31T09:00:00Z",
+    },
+  ]);
+  const [followupSummary, setFollowupSummary] = useState<FollowupWorkqueueSummaryPayload>({
+    total_active: 2,
+    due_today: 1,
+    overdue: 0,
+    blocked: 0,
+    completed_today: 0,
+  });
+  const [selectedFollowup, setSelectedFollowup] = useState<FollowupPayload | null>(null);
+  const [followupFilterStatus, setFollowupFilterStatus] = useState<string>("ALL");
+  const [showCreateFollowupModal, setShowCreateFollowupModal] = useState<boolean>(false);
+  const [showFollowupDetailsDrawer, setShowFollowupDetailsDrawer] = useState<boolean>(false);
+  const [showFollowupAuditModal, setShowFollowupAuditModal] = useState<boolean>(false);
+  const [followupAuditLogs, setFollowupAuditLogs] = useState<any[]>([]);
+  const [isRefreshingFollowups, setIsRefreshingFollowups] = useState<boolean>(false);
+
+  // Follow-up form states
+  const [newFollowupType, setNewFollowupType] = useState<FollowupType>(FollowupType.CHECK_IN);
+  const [newFollowupPriority, setNewFollowupPriority] = useState<FollowupPriority>(FollowupPriority.NORMAL);
+  const [newFollowupPurpose, setNewFollowupPurpose] = useState<string>("");
+  const [newFollowupChannel, setNewFollowupChannel] = useState<ContactChannel>(ContactChannel.OPERATOR_CALLBACK);
+  const [newFollowupScheduledFor, setNewFollowupScheduledFor] = useState<string>("");
+  const [newFollowupDueAt, setNewFollowupDueAt] = useState<string>("");
+  const [newFollowupSafeWindow, setNewFollowupSafeWindow] = useState<string>("09:00-12:00");
+  const [newFollowupHumanOnly, setNewFollowupHumanOnly] = useState<boolean>(true);
+  const [newFollowupConsentState, setNewFollowupConsentState] = useState<ConsentState>(ConsentState.GRANTED);
+  const [newFollowupMaxAttempts, setNewFollowupMaxAttempts] = useState<number>(3);
+  const [newFollowupNotes, setNewFollowupNotes] = useState<string>("");
+
+  // Attempt recording form states
+  const [attemptChannel, setAttemptChannel] = useState<ContactChannel>(ContactChannel.OPERATOR_CALLBACK);
+  const [attemptResult, setAttemptResult] = useState<ContactResult>(ContactResult.CONTACTED_SUCCESSFULLY);
+  const [attemptNotes, setAttemptNotes] = useState<string>("");
+
+  // Reschedule form states
+  const [rescheduleTime, setRescheduleTime] = useState<string>("");
+  const [rescheduleReason, setRescheduleReason] = useState<string>("");
 
 
   // Selected Call Data
@@ -903,9 +1022,60 @@ export default function OperatorCallsPage() {
             fetchCaseForCall(payload.case_id);
           }
           break;
+
+        case "FOLLOWUP_CREATED" as any:
+        case "FOLLOWUP_APPROVED" as any:
+        case "FOLLOWUP_SCHEDULED" as any:
+        case "FOLLOWUP_ASSIGNED" as any:
+        case "FOLLOWUP_STARTED" as any:
+        case "FOLLOWUP_ATTEMPTED" as any:
+        case "FOLLOWUP_COMPLETED" as any:
+        case "FOLLOWUP_RESCHEDULED" as any:
+        case "FOLLOWUP_CANCELLED" as any:
+        case "FOLLOWUP_BLOCKED" as any:
+        case "FOLLOWUP_REMINDER_DUE" as any:
+        case "FOLLOWUP_CONSENT_GRANTED" as any:
+        case "FOLLOWUP_CONSENT_REVOKED" as any:
+        case "FOLLOWUP_CONSENT_LIMITED" as any:
+        case "FOLLOWUP_CONSENT_REFUSED" as any:
+          fetchFollowups();
+          fetchFollowupSummary();
+          break;
       }
     },
   });
+
+  // Phase 12: Follow-up Fetchers
+  const fetchFollowups = async (caseId?: string) => {
+    try {
+      setIsRefreshingFollowups(true);
+      let url = `${apiUrl}/v1/followups`;
+      if (caseId) {
+        url = `${apiUrl}/v1/cases/${caseId}/followups`;
+      }
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setFollowups(data.items || (Array.isArray(data) ? data : []));
+      }
+    } catch (e) {
+      console.error("Failed to fetch followups:", e);
+    } finally {
+      setIsRefreshingFollowups(false);
+    }
+  };
+
+  const fetchFollowupSummary = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/v1/followups/summary`);
+      if (res.ok) {
+        const data = await res.json();
+        setFollowupSummary(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch followup summary:", e);
+    }
+  };
 
   // REST Snapshot Fetcher
   const fetchCalls = async () => {
@@ -941,9 +1111,13 @@ export default function OperatorCallsPage() {
     fetchCalls();
     fetchSafetyStatus();
     fetchCaseForCall();
+    fetchFollowups();
+    fetchFollowupSummary();
     const interval = setInterval(() => {
       fetchCalls();
       fetchSafetyStatus();
+      fetchFollowups();
+      fetchFollowupSummary();
     }, 8000);
     return () => clearInterval(interval);
   }, [apiUrl]);
@@ -1560,6 +1734,222 @@ export default function OperatorCallsPage() {
     }
   };
 
+  // Phase 12: Follow-up Handlers
+  const displayedFollowups = useMemo(() => {
+    if (followupFilterStatus === "ALL") return followups;
+    return followups.filter((f) => f.status === followupFilterStatus);
+  }, [followups, followupFilterStatus]);
+
+  const handleCreateFollowup = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const caseId = caseRecord?.case_id || "case-1001";
+    try {
+      const now = new Date();
+      const sched = newFollowupScheduledFor || new Date(now.getTime() + 3600000 * 24).toISOString();
+      const due = newFollowupDueAt || new Date(now.getTime() + 3600000 * 48).toISOString();
+
+      const res = await fetch(`${apiUrl}/v1/cases/${caseId}/followups`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          case_id: caseId,
+          call_id: selectedCallId || "call-fixture-01",
+          created_by: "operator_1",
+          type: newFollowupType,
+          priority: newFollowupPriority,
+          purpose: newFollowupPurpose || "Scheduled safety and welfare follow-up check-in",
+          channel: newFollowupChannel,
+          scheduled_for: sched,
+          due_at: due,
+          safe_contact_window: newFollowupSafeWindow,
+          contact_preferences: {
+            preferred_channel: newFollowupChannel,
+            safe_to_contact: true,
+            human_only: newFollowupHumanOnly,
+            preferred_time_window: newFollowupSafeWindow,
+          },
+          consent_state: newFollowupConsentState,
+          max_attempts: Number(newFollowupMaxAttempts) || 3,
+          notes_ref: newFollowupNotes || undefined,
+        }),
+      });
+      if (res.ok) {
+        setShowCreateFollowupModal(false);
+        setNewFollowupPurpose("");
+        setNewFollowupNotes("");
+        await fetchFollowups();
+        await fetchFollowupSummary();
+      } else {
+        const err = await res.json();
+        alert(`Failed to create follow-up: ${err.detail || "Validation error"}`);
+      }
+    } catch (err) {
+      console.error("Error creating followup:", err);
+    }
+  };
+
+  const handleStartFollowup = async (followupId: string) => {
+    try {
+      const res = await fetch(`${apiUrl}/v1/followups/${followupId}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator_id: "operator_1" }),
+      });
+      if (res.ok) {
+        await fetchFollowups();
+        await fetchFollowupSummary();
+        if (selectedFollowup?.followup_id === followupId) {
+          const updated = await res.json();
+          setSelectedFollowup(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Error starting followup:", err);
+    }
+  };
+
+  const handleRecordAttempt = async (followupId: string) => {
+    try {
+      const res = await fetch(`${apiUrl}/v1/followups/${followupId}/attempt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operator_id: "operator_1",
+          channel: attemptChannel,
+          result: attemptResult,
+          notes: attemptNotes || "Attempt executed by operator",
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setAttemptNotes("");
+        await fetchFollowups();
+        await fetchFollowupSummary();
+        if (selectedFollowup?.followup_id === followupId) {
+          setSelectedFollowup(updated);
+        }
+      } else {
+        const err = await res.json();
+        alert(`Attempt failed: ${err.detail || "Error"}`);
+      }
+    } catch (err) {
+      console.error("Error recording attempt:", err);
+    }
+  };
+
+  const handleCompleteFollowup = async (followupId: string, outcome: FollowupOutcome) => {
+    try {
+      const res = await fetch(`${apiUrl}/v1/followups/${followupId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operator_id: "operator_1",
+          outcome: outcome || FollowupOutcome.CONTACTED_SUCCESSFULLY,
+          notes: "Completed by operator review",
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        await fetchFollowups();
+        await fetchFollowupSummary();
+        if (selectedFollowup?.followup_id === followupId) {
+          setSelectedFollowup(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Error completing followup:", err);
+    }
+  };
+
+  const handleRescheduleFollowup = async (followupId: string) => {
+    try {
+      const targetTime = rescheduleTime || new Date(Date.now() + 86400000).toISOString();
+      const res = await fetch(`${apiUrl}/v1/followups/${followupId}/reschedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operator_id: "operator_1",
+          new_scheduled_for: targetTime,
+          reason: rescheduleReason || "Caller requested later time slot",
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRescheduleTime("");
+        setRescheduleReason("");
+        await fetchFollowups();
+        await fetchFollowupSummary();
+        if (selectedFollowup?.followup_id === followupId) {
+          setSelectedFollowup(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Error rescheduling followup:", err);
+    }
+  };
+
+  const handleCancelFollowup = async (followupId: string, reason?: string) => {
+    try {
+      const res = await fetch(`${apiUrl}/v1/followups/${followupId}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operator_id: "operator_1",
+          reason: reason || "Cancelled by tele-counselor workstation",
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        await fetchFollowups();
+        await fetchFollowupSummary();
+        if (selectedFollowup?.followup_id === followupId) {
+          setSelectedFollowup(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Error cancelling followup:", err);
+    }
+  };
+
+  const handleRevokeConsent = async (caseId: string, reason?: string) => {
+    try {
+      const res = await fetch(`${apiUrl}/v1/cases/${caseId}/followups/revoke-consent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operator_id: "operator_1",
+          reason: reason || "Caller withdrew contact consent during interaction",
+        }),
+      });
+      if (res.ok) {
+        await fetchFollowups();
+        await fetchFollowupSummary();
+        if (selectedFollowup) {
+          const updatedRes = await fetch(`${apiUrl}/v1/followups/${selectedFollowup.followup_id}`);
+          if (updatedRes.ok) {
+            setSelectedFollowup(await updatedRes.json());
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error revoking consent:", err);
+    }
+  };
+
+  const handleViewFollowupAudit = async (followupId?: string) => {
+    try {
+      const targetId = followupId || selectedFollowup?.followup_id || "fol-1001";
+      const res = await fetch(`${apiUrl}/v1/followups/${targetId}/audit?limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        setFollowupAuditLogs(data.items || (Array.isArray(data) ? data : []));
+        setShowFollowupAuditModal(true);
+      }
+    } catch (err) {
+      console.error("Failed to load followup audit:", err);
+    }
+  };
+
 
   const handleEndCall = async () => {
     if (!selectedCallId) return;
@@ -1778,6 +2168,9 @@ export default function OperatorCallsPage() {
       }
       if (eventFilter === "CASE") {
         return type.includes("CASE");
+      }
+      if (eventFilter === "FOLLOWUP") {
+        return type.includes("FOLLOWUP");
       }
       return true;
     });
@@ -3779,7 +4172,7 @@ export default function OperatorCallsPage() {
                 </div>
 
                 {/* Case Metadata & Subgraph Controls */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3 text-xs bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3 text-xs bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
                   <div className="flex flex-col">
                     <span className="text-[10px] text-slate-400">Linked Call</span>
                     <span className="font-mono text-slate-200 truncate">
@@ -3796,6 +4189,15 @@ export default function OperatorCallsPage() {
                     <span className="text-[10px] text-slate-400">Primary Language</span>
                     <span className="text-slate-200">
                       {caseRecord?.primary_language || "en-IN"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400">Linked Follow-ups</span>
+                    <span
+                      data-testid="case-followup-count"
+                      className="text-xs font-mono font-bold text-emerald-400"
+                    >
+                      {followups.filter((f) => f.case_id === (caseRecord?.case_id || "case-1001")).length} Active
                     </span>
                   </div>
                   <div className="flex items-center gap-2 justify-end">
@@ -4158,6 +4560,355 @@ export default function OperatorCallsPage() {
                 </div>
               )}
 
+              {/* Phase 12: Follow-up Workqueue & Continuity Engine Layer */}
+              <div
+                data-testid="followup-workqueue-panel"
+                className="mx-5 mt-3 p-4 rounded-xl bg-gradient-to-br from-slate-900/90 to-emerald-950/20 border border-emerald-800/40 shadow"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <CalendarCheck className="h-4 w-4 text-emerald-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">
+                      Follow-up Workqueue &amp; Continuity Engine
+                    </span>
+                    <span
+                      data-testid="followup-supervised-badge"
+                      className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-slate-800 text-slate-300 border border-slate-700"
+                    >
+                      HUMAN_SUPERVISED
+                    </span>
+                    <span
+                      data-testid="followup-consent-guarded-badge"
+                      className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-emerald-950/80 text-emerald-300 border border-emerald-700/50"
+                    >
+                      CONSENT_GUARDED
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      data-testid="create-followup-btn"
+                      onClick={() => setShowCreateFollowupModal(true)}
+                      className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold flex items-center gap-1 shadow-sm transition-colors"
+                    >
+                      <Calendar className="h-3 w-3" />
+                      Schedule Follow-up
+                    </button>
+                    <button
+                      data-testid="view-all-followup-audit-btn"
+                      onClick={() => handleViewFollowupAudit()}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] text-slate-300 flex items-center gap-1 transition-colors"
+                    >
+                      <Clock className="h-3 w-3" />
+                      Audit Trail
+                    </button>
+                    <button
+                      data-testid="refresh-followups-btn"
+                      onClick={() => {
+                        fetchFollowups();
+                        fetchFollowupSummary();
+                      }}
+                      disabled={isRefreshingFollowups}
+                      className="px-2 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/50 text-[10px] text-emerald-300 flex items-center gap-1 disabled:opacity-50 transition-colors"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${isRefreshingFollowups ? "animate-spin" : ""}`} />
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+
+                {/* Metrics Strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3 text-xs">
+                  <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 flex flex-col">
+                    <span className="text-[10px] text-slate-400">Total Active</span>
+                    <span data-testid="workqueue-stat-active" className="text-base font-mono font-bold text-slate-200">
+                      {followupSummary.total_active}
+                    </span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 flex flex-col">
+                    <span className="text-[10px] text-amber-400">Due Today</span>
+                    <span data-testid="workqueue-stat-due" className="text-base font-mono font-bold text-amber-300">
+                      {followupSummary.due_today}
+                    </span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 flex flex-col">
+                    <span className="text-[10px] text-rose-400">Overdue</span>
+                    <span data-testid="workqueue-stat-overdue" className="text-base font-mono font-bold text-rose-400">
+                      {followupSummary.overdue}
+                    </span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 flex flex-col">
+                    <span className="text-[10px] text-red-400">Blocked</span>
+                    <span data-testid="workqueue-stat-blocked" className="text-base font-mono font-bold text-red-400">
+                      {followupSummary.blocked}
+                    </span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 flex flex-col">
+                    <span className="text-[10px] text-emerald-400">Completed Today</span>
+                    <span data-testid="workqueue-stat-completed" className="text-base font-mono font-bold text-emerald-400">
+                      {followupSummary.completed_today}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex flex-wrap gap-1.5 mb-3 border-b border-slate-800/80 pb-2">
+                  {[
+                    { id: "ALL", label: "All Tasks", testId: "followup-filter-all" },
+                    { id: "SCHEDULED", label: "Scheduled", testId: "followup-filter-scheduled" },
+                    { id: "READY", label: "Ready", testId: "followup-filter-ready" },
+                    { id: "IN_PROGRESS", label: "In Progress", testId: "followup-filter-inprogress" },
+                    { id: "BLOCKED", label: "Blocked", testId: "followup-filter-blocked" },
+                    { id: "COMPLETED", label: "Completed", testId: "followup-filter-completed" },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      data-testid={tab.testId}
+                      onClick={() => setFollowupFilterStatus(tab.id)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                        followupFilterStatus === tab.id
+                          ? "bg-emerald-600 text-white font-semibold"
+                          : "bg-slate-800/80 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Follow-up Card List */}
+                <div data-testid="followup-list" className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {displayedFollowups.length === 0 ? (
+                    <div className="text-center py-6 text-slate-500 text-xs bg-slate-950/40 rounded-lg border border-slate-800/60">
+                      <CalendarClock className="h-6 w-6 mx-auto mb-1.5 opacity-30 text-emerald-400" />
+                      No follow-up tasks match the selected filter.
+                    </div>
+                  ) : (
+                    displayedFollowups.map((fol) => {
+                      const isBlocked = fol.status === FollowupStatus.BLOCKED;
+                      const isCompleted = fol.status === FollowupStatus.COMPLETED;
+                      const isInProgress = fol.status === FollowupStatus.IN_PROGRESS;
+                      const isReady = fol.status === FollowupStatus.READY;
+                      const isScheduled = fol.status === FollowupStatus.SCHEDULED;
+
+                      return (
+                        <div
+                          key={fol.followup_id}
+                          data-testid={`followup-card-${fol.followup_id}`}
+                          className={`p-3 rounded-lg border transition-all text-xs ${
+                            isBlocked
+                              ? "bg-red-950/20 border-red-800/40"
+                              : isInProgress
+                              ? "bg-emerald-950/30 border-emerald-600/60 shadow-sm"
+                              : isReady
+                              ? "bg-amber-950/20 border-amber-600/50"
+                              : isCompleted
+                              ? "bg-slate-900/40 border-slate-800/60 opacity-80"
+                              : "bg-slate-950/60 border-slate-800 hover:border-slate-700"
+                          }`}
+                        >
+                          {/* Top row: ID, Type, Status, Priority, Consent */}
+                          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span data-testid="followup-id" className="font-mono font-bold text-emerald-300">
+                                {fol.followup_id}
+                              </span>
+                              <span
+                                data-testid="followup-type-badge"
+                                className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700"
+                              >
+                                {fol.type}
+                              </span>
+                              <span
+                                data-testid="followup-status-badge"
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                                  isBlocked
+                                    ? "bg-rose-950/80 text-rose-300 border border-rose-800"
+                                    : isCompleted
+                                    ? "bg-slate-800 text-slate-400 border border-slate-700"
+                                    : isInProgress
+                                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/50"
+                                    : isReady
+                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/50"
+                                    : "bg-indigo-950/60 text-indigo-300 border border-indigo-700/50"
+                                }`}
+                              >
+                                {fol.status}
+                              </span>
+                              <span
+                                data-testid="followup-priority-badge"
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                  fol.priority === FollowupPriority.CRITICAL_REVIEW
+                                    ? "bg-rose-900/60 text-rose-300 border border-rose-700"
+                                    : fol.priority === FollowupPriority.HIGH
+                                    ? "bg-amber-900/50 text-amber-300 border border-amber-700"
+                                    : "bg-slate-800 text-slate-400"
+                                }`}
+                              >
+                                {fol.priority}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                data-testid="followup-consent-badge"
+                                className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold ${
+                                  fol.consent_state === ConsentState.GRANTED
+                                    ? "bg-emerald-950/70 text-emerald-400 border border-emerald-800/60"
+                                    : fol.consent_state === ConsentState.REVOKED || fol.consent_state === ConsentState.REFUSED
+                                    ? "bg-red-950/70 text-red-400 border border-red-800/60"
+                                    : "bg-amber-950/70 text-amber-400 border border-amber-800/60"
+                                }`}
+                              >
+                                CONSENT: {fol.consent_state}
+                              </span>
+                              <span
+                                data-testid="followup-channel-badge"
+                                className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-slate-900 text-slate-400 border border-slate-800"
+                              >
+                                {fol.channel}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Purpose */}
+                          <p data-testid="followup-purpose" className="text-slate-200 text-xs mb-2 leading-relaxed">
+                            {fol.purpose}
+                          </p>
+
+                          {/* Blocked reason if any */}
+                          {fol.blocked_reason && (
+                            <div className="mb-2 p-1.5 rounded bg-rose-950/40 border border-rose-800/50 text-[11px] text-rose-300 flex items-center gap-1.5">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-400" />
+                              <span>Blocked: {fol.blocked_reason}</span>
+                            </div>
+                          )}
+
+                          {/* Timings and Attempts */}
+                          <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-400 border-t border-slate-800/60 pt-1.5 mb-2 gap-2">
+                            <div className="flex items-center gap-3">
+                              <span>
+                                Scheduled:{" "}
+                                <strong data-testid="followup-scheduled-time" className="text-slate-300 font-mono">
+                                  {new Date(fol.scheduled_for).toLocaleString()}
+                                </strong>
+                              </span>
+                              {fol.safe_contact_window && (
+                                <span>
+                                  Safe Window:{" "}
+                                  <strong data-testid="followup-safe-window" className="text-emerald-400 font-mono">
+                                    {fol.safe_contact_window}
+                                  </strong>
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span>
+                                Attempts:{" "}
+                                <strong data-testid="followup-attempts-count" className="text-slate-300 font-mono">
+                                  {fol.attempt_count} / {fol.max_attempts}
+                                </strong>
+                              </span>
+                              {fol.assigned_to && (
+                                <span className="font-mono text-slate-400">Assigned: {fol.assigned_to}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Operator Actions Strip */}
+                          <div className="flex flex-wrap items-center justify-between gap-1.5 border-t border-slate-900 pt-1.5">
+                            <div className="flex items-center gap-1.5">
+                              {(isReady || isScheduled) && (
+                                <button
+                                  data-testid="start-followup-btn"
+                                  onClick={() => handleStartFollowup(fol.followup_id)}
+                                  className="px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-[10px] font-semibold transition-colors"
+                                >
+                                  Start Task
+                                </button>
+                              )}
+                              {isInProgress && (
+                                <>
+                                  <button
+                                    data-testid="record-attempt-btn"
+                                    onClick={() => {
+                                      setSelectedFollowup(fol);
+                                      setShowFollowupDetailsDrawer(true);
+                                    }}
+                                    className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-semibold transition-colors"
+                                  >
+                                    Record Attempt
+                                  </button>
+                                  <button
+                                    data-testid="complete-followup-btn"
+                                    onClick={() => handleCompleteFollowup(fol.followup_id, FollowupOutcome.CONTACTED_SUCCESSFULLY)}
+                                    className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold transition-colors"
+                                  >
+                                    Complete
+                                  </button>
+                                </>
+                              )}
+                              {!isCompleted && !isBlocked && (
+                                <>
+                                  <button
+                                    data-testid="reschedule-followup-btn"
+                                    onClick={() => {
+                                      setSelectedFollowup(fol);
+                                      setShowFollowupDetailsDrawer(true);
+                                    }}
+                                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] transition-colors"
+                                  >
+                                    Reschedule
+                                  </button>
+                                  <button
+                                    data-testid="cancel-followup-btn"
+                                    onClick={() => handleCancelFollowup(fol.followup_id)}
+                                    className="px-2 py-0.5 rounded bg-rose-950/40 hover:bg-rose-950/80 text-rose-300 border border-rose-800/40 text-[10px] transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              )}
+                              {fol.consent_state === ConsentState.GRANTED && !isBlocked && !isCompleted && (
+                                <button
+                                  data-testid="revoke-consent-btn"
+                                  onClick={() => handleRevokeConsent(fol.case_id)}
+                                  className="px-2 py-0.5 rounded bg-red-950/50 hover:bg-red-900/60 text-red-300 border border-red-800/50 text-[10px] flex items-center gap-1 transition-colors"
+                                >
+                                  <Ban className="h-2.5 w-2.5" />
+                                  Revoke Consent
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                data-testid="view-followup-details-btn"
+                                onClick={() => {
+                                  setSelectedFollowup(fol);
+                                  setShowFollowupDetailsDrawer(true);
+                                }}
+                                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition-colors"
+                              >
+                                Details
+                              </button>
+                              <button
+                                data-testid="view-followup-audit-btn"
+                                onClick={() => handleViewFollowupAudit(fol.followup_id)}
+                                className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 text-[10px] transition-colors"
+                              >
+                                Audit
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
               {/* Live Transcript Chronological Stream */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {transcripts.length === 0 && !partialDraft ? (
@@ -4282,7 +5033,7 @@ export default function OperatorCallsPage() {
 
             {/* Filter Pills */}
             <div className="flex flex-wrap gap-1">
-              {(["ALL", "OPERATOR", "SAFETY", "SVI", "ACOUSTIC", "ADAPTIVE", "ORCHESTRATION", "KNOWLEDGE", "CASE", "TRANSCRIPT", "CONVERSATION", "ERRORS", "LATENCY"] as EventFilterCategory[]).map(
+              {(["ALL", "OPERATOR", "SAFETY", "SVI", "ACOUSTIC", "ADAPTIVE", "ORCHESTRATION", "KNOWLEDGE", "CASE", "FOLLOWUP", "TRANSCRIPT", "CONVERSATION", "ERRORS", "LATENCY"] as EventFilterCategory[]).map(
                 (f) => (
                   <button
                     key={f}
@@ -4314,6 +5065,7 @@ export default function OperatorCallsPage() {
                 const isOrch = type.includes("ORCHESTRATION") || type.includes("AGENT_") || type.includes("BRIEFING");
                 const isKnowledge = type.includes("KNOWLEDGE");
                 const isCase = type.includes("CASE");
+                const isFollowup = type.includes("FOLLOWUP");
 
                 return (
                   <div
@@ -4332,6 +5084,8 @@ export default function OperatorCallsPage() {
                         ? "bg-amber-950/20 border-amber-800/50"
                         : isCase
                         ? "bg-violet-950/30 border-violet-700/60"
+                        : isFollowup
+                        ? "bg-emerald-950/30 border-emerald-700/60"
                         : "bg-slate-900 border-slate-800"
                     }`}
                   >
@@ -4350,6 +5104,8 @@ export default function OperatorCallsPage() {
                             ? "text-amber-400"
                             : isCase
                             ? "text-violet-300"
+                            : isFollowup
+                            ? "text-emerald-300"
                             : "text-indigo-400"
                         }`}
                       >
@@ -5861,6 +6617,505 @@ export default function OperatorCallsPage() {
                   {confirmationAction.confirmLabel || "Confirm"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 12: Create Follow-up Modal */}
+      {showCreateFollowupModal && (
+        <div
+          data-testid="create-followup-modal"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-emerald-400" />
+                <h3 className="text-sm font-bold text-white">Schedule Safe Follow-up Task</h3>
+              </div>
+              <button
+                data-testid="close-create-followup-modal-btn"
+                onClick={() => setShowCreateFollowupModal(false)}
+                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateFollowup} className="p-4 space-y-3 overflow-y-auto flex-1 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Follow-up Type</label>
+                  <select
+                    data-testid="create-followup-type-select"
+                    value={newFollowupType}
+                    onChange={(e) => setNewFollowupType(e.target.value as FollowupType)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200"
+                  >
+                    <option value={FollowupType.CHECK_IN}>CHECK_IN</option>
+                    <option value={FollowupType.HUMAN_CALLBACK}>HUMAN_CALLBACK</option>
+                    <option value={FollowupType.RESOURCE_FOLLOW_UP}>RESOURCE_FOLLOW_UP</option>
+                    <option value={FollowupType.CASE_REVIEW}>CASE_REVIEW</option>
+                    <option value={FollowupType.DOCUMENT_FOLLOW_UP}>DOCUMENT_FOLLOW_UP</option>
+                    <option value={FollowupType.HANDOFF_FOLLOW_UP}>HANDOFF_FOLLOW_UP</option>
+                    <option value={FollowupType.OPERATOR_REVIEW}>OPERATOR_REVIEW</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Priority</label>
+                  <select
+                    data-testid="create-followup-priority-select"
+                    value={newFollowupPriority}
+                    onChange={(e) => setNewFollowupPriority(e.target.value as FollowupPriority)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200"
+                  >
+                    <option value={FollowupPriority.LOW}>LOW</option>
+                    <option value={FollowupPriority.NORMAL}>NORMAL</option>
+                    <option value={FollowupPriority.HIGH}>HIGH</option>
+                    <option value={FollowupPriority.CRITICAL_REVIEW}>CRITICAL_REVIEW</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Purpose / Clinical Context</label>
+                <input
+                  data-testid="create-followup-purpose-input"
+                  type="text"
+                  placeholder="e.g., Safe shelter follow-up and legal aid contact verification"
+                  value={newFollowupPurpose}
+                  onChange={(e) => setNewFollowupPurpose(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 placeholder-slate-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Contact Channel</label>
+                  <select
+                    data-testid="create-followup-channel-select"
+                    value={newFollowupChannel}
+                    onChange={(e) => setNewFollowupChannel(e.target.value as ContactChannel)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200"
+                  >
+                    <option value={ContactChannel.OPERATOR_CALLBACK}>OPERATOR_CALLBACK</option>
+                    <option value={ContactChannel.PHONE}>PHONE</option>
+                    <option value={ContactChannel.INTERNAL_TASK}>INTERNAL_TASK</option>
+                    <option value={ContactChannel.SMS}>SMS</option>
+                    <option value={ContactChannel.EMAIL}>EMAIL</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Consent State</label>
+                  <select
+                    data-testid="create-followup-consent-select"
+                    value={newFollowupConsentState}
+                    onChange={(e) => setNewFollowupConsentState(e.target.value as ConsentState)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200"
+                  >
+                    <option value={ConsentState.GRANTED}>GRANTED</option>
+                    <option value={ConsentState.LIMITED}>LIMITED</option>
+                    <option value={ConsentState.REQUESTED}>REQUESTED</option>
+                    <option value={ConsentState.NOT_APPLICABLE}>NOT_APPLICABLE</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Scheduled Time (UTC ISO)</label>
+                  <input
+                    data-testid="create-followup-scheduled-input"
+                    type="text"
+                    placeholder="2026-04-01T10:00:00Z"
+                    value={newFollowupScheduledFor}
+                    onChange={(e) => setNewFollowupScheduledFor(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 placeholder-slate-500 font-mono text-[11px]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Due Deadline (UTC ISO)</label>
+                  <input
+                    data-testid="create-followup-due-input"
+                    type="text"
+                    placeholder="2026-04-02T10:00:00Z"
+                    value={newFollowupDueAt}
+                    onChange={(e) => setNewFollowupDueAt(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 placeholder-slate-500 font-mono text-[11px]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Safe Contact Window</label>
+                  <input
+                    data-testid="create-followup-safewindow-input"
+                    type="text"
+                    placeholder="09:00-12:00"
+                    value={newFollowupSafeWindow}
+                    onChange={(e) => setNewFollowupSafeWindow(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 placeholder-slate-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Max Attempts</label>
+                  <input
+                    data-testid="create-followup-maxattempts-input"
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={newFollowupMaxAttempts}
+                    onChange={(e) => setNewFollowupMaxAttempts(parseInt(e.target.value, 10))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  data-testid="create-followup-humanonly-checkbox"
+                  type="checkbox"
+                  id="humanOnlyCheck"
+                  checked={newFollowupHumanOnly}
+                  onChange={(e) => setNewFollowupHumanOnly(e.target.checked)}
+                  className="rounded bg-slate-950 border-slate-700 text-emerald-600 focus:ring-0"
+                />
+                <label htmlFor="humanOnlyCheck" className="text-slate-300 text-xs cursor-pointer">
+                  Human Tele-Counselor Only (Strict No-Bot Outreach)
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Notes / Instructions</label>
+                <textarea
+                  data-testid="create-followup-notes-input"
+                  rows={2}
+                  placeholder="Optional counseling or safety instructions..."
+                  value={newFollowupNotes}
+                  onChange={(e) => setNewFollowupNotes(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 placeholder-slate-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateFollowupModal(false)}
+                  className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  data-testid="submit-create-followup-btn"
+                  className="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors shadow-sm"
+                >
+                  Schedule Follow-up
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 12: Follow-up Details Drawer / Modal */}
+      {showFollowupDetailsDrawer && selectedFollowup && (
+        <div
+          data-testid="followup-details-drawer"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-2">
+                <CalendarCheck className="h-5 w-5 text-emerald-400" />
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    Follow-up Details: {selectedFollowup.followup_id}
+                    <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-slate-800 text-slate-300 border border-slate-700">
+                      {selectedFollowup.status}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">Case ID: {selectedFollowup.case_id}</p>
+                </div>
+              </div>
+              <button
+                data-testid="close-followup-details-btn"
+                onClick={() => setShowFollowupDetailsDrawer(false)}
+                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 space-y-4 text-xs">
+              {/* Metadata Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-slate-950/60 p-3 rounded-lg border border-slate-800">
+                <div>
+                  <span className="text-[10px] text-slate-500">Type</span>
+                  <div className="font-semibold text-slate-200">{selectedFollowup.type}</div>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500">Priority</span>
+                  <div className="font-semibold text-slate-200">{selectedFollowup.priority}</div>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500">Consent State</span>
+                  <div className="font-semibold text-emerald-400">{selectedFollowup.consent_state}</div>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500">Safe Window</span>
+                  <div className="font-semibold text-slate-200">{selectedFollowup.safe_contact_window || "Anytime"}</div>
+                </div>
+              </div>
+
+              {/* Purpose */}
+              <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase font-semibold">Purpose</span>
+                <p className="text-slate-200 mt-1">{selectedFollowup.purpose}</p>
+              </div>
+
+              {/* Attempt History */}
+              <div className="border border-slate-800 rounded-lg p-3 bg-slate-950/40">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                    <History className="h-3.5 w-3.5 text-amber-400" />
+                    Attempt History ({selectedFollowup.attempt_count} / {selectedFollowup.max_attempts})
+                  </span>
+                </div>
+                <div data-testid="followup-attempts-list" className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {((selectedFollowup as any).attempts && (selectedFollowup as any).attempts.length > 0) ? (
+                    (selectedFollowup as any).attempts.map((att: any, idx: number) => (
+                      <div
+                        key={idx}
+                        data-testid="followup-attempt-item"
+                        className="p-2 rounded bg-slate-900 border border-slate-800 text-[11px] flex items-center justify-between"
+                      >
+                        <div>
+                          <span className="font-bold text-amber-300">Attempt #{att.attempt_number}</span>
+                          <span className="text-slate-400 ml-2">[{att.channel}]</span>
+                          <span className="text-slate-300 ml-2 font-mono font-semibold">{att.result}</span>
+                          {att.notes && <p className="text-slate-400 mt-0.5">{att.notes}</p>}
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {new Date(att.attempted_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-slate-500 text-center py-2 text-[11px]">No attempts recorded yet.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Form 1: Record Attempt */}
+              {selectedFollowup.status !== FollowupStatus.COMPLETED &&
+                selectedFollowup.status !== FollowupStatus.BLOCKED &&
+                selectedFollowup.status !== FollowupStatus.CANCELLED && (
+                  <div className="border border-amber-800/40 bg-amber-950/10 p-3 rounded-lg space-y-2">
+                    <span className="text-xs font-bold text-amber-300 flex items-center gap-1">
+                      <UserCheck className="h-3.5 w-3.5" />
+                      Record Human Contact Attempt
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-slate-400 mb-0.5">Channel</label>
+                        <select
+                          data-testid="attempt-channel-select"
+                          value={attemptChannel}
+                          onChange={(e) => setAttemptChannel(e.target.value as ContactChannel)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200"
+                        >
+                          <option value={ContactChannel.OPERATOR_CALLBACK}>OPERATOR_CALLBACK</option>
+                          <option value={ContactChannel.PHONE}>PHONE</option>
+                          <option value={ContactChannel.SMS}>SMS</option>
+                          <option value={ContactChannel.INTERNAL_TASK}>INTERNAL_TASK</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 mb-0.5">Result</label>
+                        <select
+                          data-testid="attempt-result-select"
+                          value={attemptResult}
+                          onChange={(e) => setAttemptResult(e.target.value as ContactResult)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200"
+                        >
+                          <option value={ContactResult.CONTACTED_SUCCESSFULLY}>CONTACTED_SUCCESSFULLY</option>
+                          <option value={ContactResult.NO_ANSWER}>NO_ANSWER</option>
+                          <option value={ContactResult.CALLER_DECLINED}>CALLER_DECLINED</option>
+                          <option value={ContactResult.RESCHEDULED}>RESCHEDULED</option>
+                          <option value={ContactResult.WRONG_CONTACT}>WRONG_CONTACT</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-0.5">Attempt Notes</label>
+                      <input
+                        data-testid="attempt-notes-input"
+                        type="text"
+                        placeholder="e.g., Reached caller, confirmed safe with family"
+                        value={attemptNotes}
+                        onChange={(e) => setAttemptNotes(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 placeholder-slate-500"
+                      />
+                    </div>
+                    <button
+                      data-testid="submit-attempt-btn"
+                      onClick={() => handleRecordAttempt(selectedFollowup.followup_id)}
+                      className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white font-semibold transition-colors shadow-sm"
+                    >
+                      Save Attempt Record
+                    </button>
+                  </div>
+                )}
+
+              {/* Action Form 2: Reschedule & Complete */}
+              {selectedFollowup.status !== FollowupStatus.COMPLETED &&
+                selectedFollowup.status !== FollowupStatus.CANCELLED && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                    {/* Reschedule */}
+                    <div className="border border-slate-800 bg-slate-950/60 p-3 rounded-lg space-y-2">
+                      <span className="text-xs font-bold text-slate-300">Reschedule Follow-up</span>
+                      <input
+                        data-testid="reschedule-time-input"
+                        type="text"
+                        placeholder="New ISO time: 2026-04-02T10:00:00Z"
+                        value={rescheduleTime}
+                        onChange={(e) => setRescheduleTime(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 text-[11px]"
+                      />
+                      <input
+                        data-testid="reschedule-reason-input"
+                        type="text"
+                        placeholder="Reason: e.g. Caller busy"
+                        value={rescheduleReason}
+                        onChange={(e) => setRescheduleReason(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200"
+                      />
+                      <button
+                        data-testid="submit-reschedule-btn"
+                        onClick={() => handleRescheduleFollowup(selectedFollowup.followup_id)}
+                        className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                      >
+                        Confirm Reschedule
+                      </button>
+                    </div>
+
+                    {/* Complete / Cancel */}
+                    <div className="border border-slate-800 bg-slate-950/60 p-3 rounded-lg space-y-2">
+                      <span className="text-xs font-bold text-slate-300">Complete / Close Task</span>
+                      <select
+                        data-testid="complete-outcome-select"
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200"
+                        defaultValue={FollowupOutcome.CONTACTED_SUCCESSFULLY}
+                      >
+                        <option value={FollowupOutcome.CONTACTED_SUCCESSFULLY}>CONTACTED_SUCCESSFULLY</option>
+                        <option value={FollowupOutcome.REFERRED}>REFERRED</option>
+                        <option value={FollowupOutcome.NO_ANSWER}>NO_ANSWER</option>
+                        <option value={FollowupOutcome.CALLER_DECLINED}>CALLER_DECLINED</option>
+                      </select>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          data-testid="submit-complete-btn"
+                          onClick={() => handleCompleteFollowup(selectedFollowup.followup_id, FollowupOutcome.CONTACTED_SUCCESSFULLY)}
+                          className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors"
+                        >
+                          Mark Completed
+                        </button>
+                        <button
+                          data-testid="submit-cancel-btn"
+                          onClick={() => handleCancelFollowup(selectedFollowup.followup_id)}
+                          className="px-3 py-1 rounded bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 transition-colors"
+                        >
+                          Cancel Task
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              {/* Revoke Consent Danger Zone */}
+              {selectedFollowup.consent_state === ConsentState.GRANTED && (
+                <div className="border border-red-800/40 bg-red-950/20 p-3 rounded-lg flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-red-300 flex items-center gap-1">
+                      <Ban className="h-3.5 w-3.5" />
+                      Caller Revocation Immediate Stop
+                    </span>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Immediately halts and blocks all active follow-ups for this case.
+                    </p>
+                  </div>
+                  <button
+                    data-testid="submit-revoke-consent-btn"
+                    onClick={() => handleRevokeConsent(selectedFollowup.case_id)}
+                    className="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-white font-bold transition-colors shadow-sm"
+                  >
+                    Revoke Consent
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 12: Follow-up Audit Trail Modal */}
+      {showFollowupAuditModal && (
+        <div
+          data-testid="followup-audit-modal"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-emerald-400" />
+                <h3 className="text-sm font-bold text-white">Follow-up Workflow Audit Trail</h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-emerald-300 font-mono border border-slate-700">
+                  Append-Only Log
+                </span>
+              </div>
+              <button
+                data-testid="close-followup-audit-modal-btn"
+                onClick={() => setShowFollowupAuditModal(false)}
+                className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div data-testid="followup-audit-log-list" className="p-4 overflow-y-auto flex-1 space-y-2 text-xs">
+              {followupAuditLogs.length === 0 ? (
+                <p className="text-center py-8 text-slate-500">No follow-up audit entries found.</p>
+              ) : (
+                followupAuditLogs.map((entry: any) => (
+                  <div
+                    key={entry.event_id || entry.entry_id}
+                    data-testid="followup-audit-log-item"
+                    className="p-2.5 rounded bg-slate-950 border border-slate-800"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono font-bold text-emerald-300">
+                        {entry.action || entry.event_type}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">{entry.timestamp}</span>
+                    </div>
+                    <div className="text-slate-300 text-[11px]">
+                      Follow-up ID: <span className="font-mono font-semibold text-slate-200">{entry.followup_id}</span>
+                      <span className="mx-2">•</span>
+                      Actor: <span className="font-semibold text-slate-200">{entry.actor_id}</span>
+                    </div>
+                    {entry.details && Object.keys(entry.details).length > 0 && (
+                      <pre className="mt-1 p-1.5 rounded bg-slate-900 text-[10px] font-mono text-slate-400 overflow-x-auto">
+                        {JSON.stringify(entry.details, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

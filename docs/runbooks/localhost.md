@@ -313,5 +313,105 @@ curl http://localhost:8000/v1/cases/case-1001/integrity
 7. Inspect **Event Timeline**:
    - Click `CASE` filter pill (`data-testid="event-filter-CASE"`) to isolate `CASE_ENTITY_EXTRACTED`, `CASE_RELATIONSHIP_CREATED`, and `CASE_CANDIDATE_CONFIRMED` events.
 
+---
+
+## 9. Verifying Phase 12 Follow-up Workflows & Continuity Engine
+
+### 9.1 Subsystem Health & Workqueue Summary
+```bash
+# Verify follow-up subsystem status
+curl http://localhost:8000/v1/followups/status
+
+# Retrieve workqueue summary KPI metrics
+curl http://localhost:8000/v1/followups/summary
+
+# List all follow-up tasks
+curl http://localhost:8000/v1/followups
+
+# List follow-ups for a specific case
+curl http://localhost:8000/v1/cases/case-1001/followups
+```
+
+### 9.2 Scheduling & Executing Safe Follow-ups via REST
+```bash
+# 1. Schedule a new safe follow-up
+curl -X POST http://localhost:8000/v1/cases/case-1001/followups \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "CHECK_IN",
+    "priority": "HIGH",
+    "purpose": "Verify shelter admittance and caller safety",
+    "channel": "OPERATOR_CALLBACK",
+    "scheduled_for": "2026-04-01T10:00:00Z",
+    "due_at": "2026-04-02T10:00:00Z",
+    "safe_contact_window": "09:00-12:00",
+    "consent_state": "GRANTED",
+    "contact_preferences": {
+      "preferred_channel": "OPERATOR_CALLBACK",
+      "safe_to_contact": true,
+      "human_only": true,
+      "preferred_time_window": "09:00-12:00"
+    }
+  }'
+
+# 2. Start follow-up task
+curl -X POST http://localhost:8000/v1/followups/fol-1001/start \
+  -H "Content-Type: application/json" \
+  -d '{"operator_id": "operator_1"}'
+
+# 3. Record human contact attempt
+curl -X POST http://localhost:8000/v1/followups/fol-1001/attempt \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operator_id": "operator_1",
+    "channel": "OPERATOR_CALLBACK",
+    "result": "CONTACTED_SUCCESSFULLY",
+    "notes": "Caller confirmed safe in temporary shelter"
+  }'
+
+# 4. Complete follow-up task
+curl -X POST http://localhost:8000/v1/followups/fol-1001/complete \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operator_id": "operator_1",
+    "outcome": "CONTACTED_SUCCESSFULLY",
+    "notes": "Completed shelter check-in"
+  }'
+
+# 5. Revoke consent (emergency halt)
+curl -X POST http://localhost:8000/v1/cases/case-1001/followups/revoke-consent \
+  -H "Content-Type: application/json" \
+  -d '{"operator_id": "operator_1", "reason": "Caller requested no further callbacks"}'
+
+# 6. View follow-up audit trail
+curl http://localhost:8000/v1/followups/fol-1001/audit
+```
+
+### 9.3 Workstation Follow-up Workqueue UI Testing
+1. Navigate to `http://localhost:3000/calls` and select an active call.
+2. Locate the **Follow-up Workqueue & Continuity Engine** panel (`data-testid="followup-workqueue-panel"`):
+   - Verify governance badges: `HUMAN_SUPERVISED`, `CONSENT_GUARDED`.
+   - Inspect the **Metrics Strip**: Total Active, Due Today, Overdue, Blocked, Completed Today.
+3. Test **Status Filter Pills**:
+   - Filter by `All Tasks`, `Scheduled`, `Ready`, `In Progress`, `Blocked`, `Completed`.
+4. Test **Schedule Follow-up Modal**:
+   - Click **"+ Schedule Follow-up"** (`data-testid="create-followup-btn"`).
+   - Fill Type, Priority, Purpose, Channel, Scheduled Time, and Safe Contact Window.
+   - Click **Schedule Follow-up** (`data-testid="submit-create-followup-btn"`).
+5. Test **Task Execution & Contact Attempts**:
+   - Click **"Start Task"** (`data-testid="start-followup-btn"`).
+   - Click **"Record Attempt"** (`data-testid="record-attempt-btn"`):
+     - Select Channel and Result, enter notes, click **"Save Attempt Record"**.
+6. Test **Rescheduling**:
+   - Click **"Reschedule"** (`data-testid="reschedule-followup-btn"`), enter new time and reason, click **"Confirm Reschedule"**.
+7. Test **Caller Consent Revocation (Immediate Halt)**:
+   - Click **"Revoke Consent"** (`data-testid="revoke-consent-btn"`):
+     - Confirm all active tasks for the case transition to `BLOCKED`.
+8. Inspect **Follow-up Audit Trail**:
+   - Click **"Audit Trail"** (`data-testid="view-all-followup-audit-btn"`) to open `data-testid="followup-audit-modal"`.
+9. Inspect **Event Timeline**:
+   - Click `FOLLOWUP` filter pill (`data-testid="timeline-filter-FOLLOWUP"`) to isolate follow-up lifecycle events.
+
+
 
 

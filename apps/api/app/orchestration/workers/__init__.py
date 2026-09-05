@@ -3,6 +3,7 @@
 from app.orchestration.workers.acoustic_context import AcousticContextAgent
 from app.orchestration.workers.case_graph_extraction import CaseGraphExtractionAgent
 from app.orchestration.workers.conversation_context import ConversationContextAgent
+from app.orchestration.workers.followup_recommendation import FollowupRecommendationAgent
 from app.orchestration.workers.knowledge_retrieval import KnowledgeRetrievalAgent
 from app.orchestration.workers.language_context import LanguageContextAgent
 from app.orchestration.workers.operator_briefing import OperatorBriefingAgent
@@ -18,5 +19,6 @@ __all__ = [
     "SupportOptionsAgent",
     "KnowledgeRetrievalAgent",
     "CaseGraphExtractionAgent",
+    "FollowupRecommendationAgent",
 ]
 

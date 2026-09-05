@@ -28,6 +28,7 @@ When a victim, concerned family member, or at-risk citizen calls the national he
 6. **Acoustic Signal Processing**: Analyzes non-verbal speech features (pitch variations, speaking rate, pauses, tremors) as supporting non-diagnostic signals.
 7. **Human-in-the-Loop Handover**: Alerts tele-counselors with real-time briefing notes, enabling seamless warm call transfer and human override.
 8. **Case Intelligence & Referral Grounding**: Synthesizes longitudinal intake records linked to verified government rehabilitation facilities (IRCAs, de-addiction centers, legal aid clinics).
+9. **Follow-up Workflow & Continuity Engine**: Manages human-supervised, consent-verified scheduled check-ins, referrals, and care continuity with safe contact windows, attempt caps, bounded recurrence, and zero autonomous robot-dialing.
 
 ---
 
@@ -90,12 +91,15 @@ graph TD
         HumanAlerts["🚨 Priority Safety Escalations"]
         HumanOverride["✋ Human Takeover & Warm Transfer"]
         CaseRecords["📁 Case Intelligence & Referral"]
+        FollowupWorkqueue["📅 Follow-up Workqueue & Continuity<br/>(Consent, Safe Windows, Attempt Caps)"]
 
         SafetyEngine -->|Emergency Alert| HumanAlerts
         RiskEngine -->|SVI Telemetry| WebConsole
         WebConsole --> HumanOverride
         HumanOverride -->|Transfer Call| Exotel
         Orchestrator --> CaseRecords
+        Orchestrator --> FollowupWorkqueue
+        WebConsole --> FollowupWorkqueue
     end
 ```
 
@@ -203,7 +207,8 @@ pnpm dev:web
 
 | Task | Command | Description |
 | :--- | :--- | :--- |
-| **Backend Tests** | `uv --directory apps/api run pytest -v` | Runs 253 unit, integration, safety, SVI, acoustic, adaptive, operator, orchestration, knowledge RAG, and case intelligence tests |
+| **Backend Tests** | `uv --directory apps/api run pytest -v` | Runs 287 unit, integration, safety, SVI, acoustic, adaptive, operator, orchestration, knowledge RAG, case intelligence, and follow-up workflow tests |
+| **Follow-up Tests** | `uv --directory apps/api run pytest tests/test_followup_*.py -v` | Validates consent FSM, safe windows, bounded recurrence, attempt caps, idempotency, audit trail, concurrency, and security |
 | **Contract Flow Test** | `uv --directory apps/api run pytest tests/test_contract_flow.py -v` | Validates end-to-end event schema transport |
 | **Case Intelligence Tests**| `uv --directory apps/api run pytest tests/test_case_*.py -v` | Validates entity extraction, relationships, candidates, SHA-256 provenance, temporal logic, and security |
 | **Knowledge RAG Tests**| `uv --directory apps/api run pytest tests/test_knowledge_*.py -v` | Validates governed retrieval, versioning, chunking, citations, conflicts, and SSRF defenses |
@@ -214,7 +219,7 @@ pnpm dev:web
 | **Adaptive Tests** | `uv --directory apps/api run pytest tests/test_adaptive_*.py -v` | Validates deterministic conversational policy and overrides |
 | **Frontend Type Check** | `pnpm type-check` | Type-checks all TypeScript packages & web app |
 | **Frontend Build** | `pnpm build` | Compiles production Next.js web application |
-| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 104 browser E2E tests (Desktop + Mobile Chrome across all 11 phases) |
+| **Playwright E2E** | `pnpm --filter @samved/web test:e2e` | Runs 128 browser E2E tests (Desktop + Mobile Chrome across all 12 phases including 24 follow-up tests) |
 | **Telephony Diagnostics** | `curl http://localhost:8000/v1/telephony/doctor` | Safe credential and public ingress check without secrets |
 | **Docker Compose** | `docker compose up -d` | Starts PostgreSQL, Redis, API, and Web containers |
 
@@ -226,10 +231,11 @@ pnpm dev:web
 3. **Human Oversight**: Tele-counselors maintain real-time supervision, can override any AI recommendation, and must confirm candidate relationships before graduation to active graph edges.
 4. **Data Limitations**: Benchmark and public datasets used during development are for technical evaluation only; they do not represent clinical ground truth.
 5. **Confidentiality & Provenance**: Caller phone numbers are masked (`+91******3210`), raw audio is ephemeral, secrets are strictly excluded from source control, and all case entities are cryptographically anchored by SHA-256 evidence hashes.
+6. **Care Continuity & Consent Boundaries**: Follow-up contacts mandate explicit, non-inferred consent (`EXPLICIT_VERBAL` or `EXPLICIT_WRITTEN`) and are strictly human-telecounselor-initiated. Autonomous robot-calling is architecturally prohibited. Revocation immediately halts all pending contact (`BLOCKED`), and caller-specified safe contact windows (e.g. `09:00-12:00`) are strictly enforced.
 
 ---
 
-## 12. Implementation Status (Phase 11 Complete)
+## 12. Implementation Status (Phase 12 Complete)
 
 | Capability / Module | Status | Phase Owner |
 | :--- | :---: | :--- |
@@ -297,7 +303,14 @@ pnpm dev:web
 | **Human Tele-Counselor Candidate Confirmation/Rejection Guard** | ✅ | Phase 11 |
 | **Operator Case Intelligence Panel, Graph Visualizer & Inspectors** | ✅ | Phase 11 |
 | **Case Graph REST APIs (`/v1/cases/...`) & Immutable Mutation Audit** | ✅ | Phase 11 |
-| **Follow-up & Care Continuity** | ⏳ | Phase 12 |
+| **Follow-up & Care Continuity Engine** | ✅ | Phase 12 |
+| **Consent State Machine & Revocation Cascade (`EXPLICIT` -> `REVOKED`)** | ✅ | Phase 12 |
+| **Safe Contact Window & Bounded Recurrence Engine** | ✅ | Phase 12 |
+| **Human-Initiated Execution Guard (Zero Autonomous Robot-Dialing)** | ✅ | Phase 12 |
+| **Deterministic Policy Checks (Purpose, SVI Supremacy, Attempt Caps)** | ✅ | Phase 12 |
+| **Operator Follow-up Workqueue, Create Modal & Execution Drawer** | ✅ | Phase 12 |
+| **Follow-up REST APIs (`/v1/followups/...`) & Cryptographic Audit Trail** | ✅ | Phase 12 |
+| **District Analytics & Aggregation** | ⏳ | Phase 13 |
 
 ---
 

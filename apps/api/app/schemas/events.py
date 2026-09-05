@@ -96,6 +96,22 @@ class EventType(str, Enum):
     CASE_NOTE_LINKED = "CASE_NOTE_LINKED"
     FOLLOWUP_SCHEDULED = "FOLLOWUP_SCHEDULED"
 
+    # Follow-up Workflow & Continuity Engine (Phase 12)
+    FOLLOWUP_CREATED = "FOLLOWUP_CREATED"
+    FOLLOWUP_APPROVAL_REQUESTED = "FOLLOWUP_APPROVAL_REQUESTED"
+    FOLLOWUP_APPROVED = "FOLLOWUP_APPROVED"
+    FOLLOWUP_READY = "FOLLOWUP_READY"
+    FOLLOWUP_STARTED = "FOLLOWUP_STARTED"
+    FOLLOWUP_COMPLETED = "FOLLOWUP_COMPLETED"
+    FOLLOWUP_RESCHEDULED = "FOLLOWUP_RESCHEDULED"
+    FOLLOWUP_CANCELLED = "FOLLOWUP_CANCELLED"
+    FOLLOWUP_BLOCKED = "FOLLOWUP_BLOCKED"
+    FOLLOWUP_MISSED = "FOLLOWUP_MISSED"
+    FOLLOWUP_EXPIRED = "FOLLOWUP_EXPIRED"
+    FOLLOWUP_CONSENT_REVOKED = "FOLLOWUP_CONSENT_REVOKED"
+    FOLLOWUP_ATTEMPT_RECORDED = "FOLLOWUP_ATTEMPT_RECORDED"
+    FOLLOWUP_OUTCOME_RECORDED = "FOLLOWUP_OUTCOME_RECORDED"
+
     # Heartbeat
     HEARTBEAT_PING = "HEARTBEAT_PING"
     HEARTBEAT_PONG = "HEARTBEAT_PONG"
@@ -484,6 +500,7 @@ class EntityType(str, Enum):
     NOTE = "NOTE"
     INTERVENTION = "INTERVENTION"
     CONTACT_POINT = "CONTACT_POINT"
+    FOLLOW_UP = "FOLLOW_UP"
 
 
 class PersonRole(str, Enum):
@@ -523,6 +540,8 @@ class RelationshipType(str, Enum):
     CITED_BY = "CITED_BY"
     OCCURRED_AT = "OCCURRED_AT"
     INVOLVES = "INVOLVES"
+    HAS_FOLLOW_UP = "HAS_FOLLOW_UP"
+    BASED_ON = "BASED_ON"
 
 
 class CaseEvidenceLinkPayload(BaseModel):
@@ -624,6 +643,162 @@ class CaseGraphPayload(BaseModel):
     candidates: List[CaseCandidatePayload] = Field(default_factory=list)
     total_nodes: int = 0
     total_edges: int = 0
+
+
+# ============================================================================
+# Phase 12 — Follow-up Workflow & Continuity Engine Models
+# ============================================================================
+
+class FollowupType(str, Enum):
+    CHECK_IN = "CHECK_IN"
+    HUMAN_CALLBACK = "HUMAN_CALLBACK"
+    RESOURCE_FOLLOW_UP = "RESOURCE_FOLLOW_UP"
+    CASE_REVIEW = "CASE_REVIEW"
+    DOCUMENT_FOLLOW_UP = "DOCUMENT_FOLLOW_UP"
+    HANDOFF_FOLLOW_UP = "HANDOFF_FOLLOW_UP"
+    OPERATOR_REVIEW = "OPERATOR_REVIEW"
+
+
+class FollowupStatus(str, Enum):
+    DRAFT = "DRAFT"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    SCHEDULED = "SCHEDULED"
+    READY = "READY"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    EXPIRED = "EXPIRED"
+    MISSED = "MISSED"
+    BLOCKED = "BLOCKED"
+
+
+class ConsentState(str, Enum):
+    UNKNOWN = "UNKNOWN"
+    REQUESTED = "REQUESTED"
+    GRANTED = "GRANTED"
+    LIMITED = "LIMITED"
+    REFUSED = "REFUSED"
+    REVOKED = "REVOKED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class FollowupPriority(str, Enum):
+    LOW = "LOW"
+    NORMAL = "NORMAL"
+    HIGH = "HIGH"
+    CRITICAL_REVIEW = "CRITICAL_REVIEW"
+
+
+class ContactChannel(str, Enum):
+    INTERNAL_TASK = "INTERNAL_TASK"
+    OPERATOR_CALLBACK = "OPERATOR_CALLBACK"
+    PHONE = "PHONE"
+    SMS = "SMS"
+    EMAIL = "EMAIL"
+
+
+class ContactResult(str, Enum):
+    CONTACTED_SUCCESSFULLY = "CONTACTED_SUCCESSFULLY"
+    NO_ANSWER = "NO_ANSWER"
+    CALLER_DECLINED = "CALLER_DECLINED"
+    WRONG_CONTACT = "WRONG_CONTACT"
+    RESCHEDULED = "RESCHEDULED"
+    REFERRED = "REFERRED"
+    UNRESOLVED = "UNRESOLVED"
+
+
+class FollowupOutcome(str, Enum):
+    CONTACTED_SUCCESSFULLY = "CONTACTED_SUCCESSFULLY"
+    NO_ANSWER = "NO_ANSWER"
+    CALLER_DECLINED = "CALLER_DECLINED"
+    WRONG_CONTACT = "WRONG_CONTACT"
+    RESCHEDULED = "RESCHEDULED"
+    REFERRED = "REFERRED"
+    UNRESOLVED = "UNRESOLVED"
+
+
+class RecurrenceRule(str, Enum):
+    ONCE = "ONCE"
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
+    CUSTOM_BOUNDED = "CUSTOM_BOUNDED"
+
+
+class ContactPreferencesPayload(BaseModel):
+    preferred_channel: Union[ContactChannel, str] = ContactChannel.OPERATOR_CALLBACK
+    preferred_time_window: Optional[str] = None
+    days_allowed: List[str] = Field(default_factory=list)
+    safe_to_contact: bool = True
+    preferred_language: Optional[str] = "en-IN"
+    human_only: bool = True
+    no_voicemail: bool = False
+    no_text: bool = False
+    timezone: Optional[str] = "Asia/Kolkata"
+
+
+class FollowupAttemptPayload(BaseModel):
+    attempt_number: int
+    attempted_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    operator_id: str
+    channel: Union[ContactChannel, str]
+    result: Union[ContactResult, str]
+    notes: Optional[str] = None
+
+
+class FollowupPayload(BaseModel):
+    followup_id: str
+    case_id: str
+    call_id: Optional[str] = None
+    created_by: str
+    assigned_to: Optional[str] = None
+    type: FollowupType
+    status: FollowupStatus
+    priority: FollowupPriority
+    requested_at: str
+    scheduled_for: str
+    due_at: str
+    completed_at: Optional[str] = None
+    cancelled_at: Optional[str] = None
+    consent_state: ConsentState
+    contact_preferences: ContactPreferencesPayload
+    safe_contact_window: Optional[str] = None
+    channel: ContactChannel
+    purpose: str
+    notes_ref: Optional[str] = None
+    citation_ref: Optional[str] = None
+    source_event: Optional[str] = None
+    last_attempt_at: Optional[str] = None
+    attempt_count: int = 0
+    max_attempts: int = 2
+    outcome: Optional[FollowupOutcome] = None
+    policy_version: str = "v1.0"
+    blocked_reason: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class FollowupEventPayload(BaseModel):
+    followup_id: str
+    case_id: str
+    call_id: Optional[str] = None
+    status: FollowupStatus
+    previous_status: Optional[FollowupStatus] = None
+    actor_id: str
+    purpose: str
+    priority: FollowupPriority
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    reason_codes: List[str] = Field(default_factory=list)
+    outcome: Optional[FollowupOutcome] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class FollowupWorkqueueSummaryPayload(BaseModel):
+    total_active: int = 0
+    due_today: int = 0
+    overdue: int = 0
+    blocked: int = 0
+    completed_today: int = 0
+
 
 
 

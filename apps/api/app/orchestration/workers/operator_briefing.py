@@ -97,6 +97,7 @@ class OperatorBriefingAgent(BaseAgentWorker):
                     key_facts.append(f"Authoritative Policy [{doc_title} - {sec}] cited.")
 
         # Case Intelligence Integration (Phase 11)
+        # Case Intelligence Integration (Phase 11)
         case_data = ctx.get("case_info") or ctx.get("case_graph_extraction_agent") or {}
         if isinstance(case_data, dict):
             num_entities = case_data.get("total_entities_extracted", 0)
@@ -105,6 +106,15 @@ class OperatorBriefingAgent(BaseAgentWorker):
                 key_facts.append(
                     f"Case Intelligence: {num_entities} entities extracted, {num_candidates} relationships pending confirmation."
                 )
+
+        # Follow-up Continuity Integration (Phase 12)
+        followup_data = ctx.get("followup_info") or ctx.get("followup_recommendation_agent") or {}
+        if isinstance(followup_data, dict) and followup_data.get("has_recommendation"):
+            sug_type = followup_data.get("suggested_type", "Follow-up")
+            sug_prio = followup_data.get("suggested_priority", "NORMAL")
+            key_facts.append(
+                f"Follow-up Recommendation [{sug_prio}]: {sug_type} suggested for continuity."
+            )
 
         # Evidence references
         evidence_refs: List[str] = [f"turn:{request.turn_id}"]
@@ -116,6 +126,8 @@ class OperatorBriefingAgent(BaseAgentWorker):
             evidence_refs.append("knowledge:citations")
         if isinstance(case_data, dict) and case_data.get("case_id"):
             evidence_refs.append(f"case:{case_data['case_id']}")
+        if isinstance(followup_data, dict) and followup_data.get("has_recommendation"):
+            evidence_refs.append("followup:recommendation")
 
         result: Dict[str, Any] = {
             "safety_summary": safety_summary,

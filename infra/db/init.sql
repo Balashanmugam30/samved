@@ -421,6 +421,101 @@ CREATE INDEX IF NOT EXISTS idx_case_evidence_case_id ON case_evidence_links(case
 CREATE INDEX IF NOT EXISTS idx_case_candidates_case_id ON case_entity_candidates(case_id);
 CREATE INDEX IF NOT EXISTS idx_case_candidates_status ON case_entity_candidates(status);
 
+-- Phase 12: Follow-up Workflow & Continuity Engine Tables
+CREATE TABLE IF NOT EXISTS followup_consents (
+    consent_id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    followup_id VARCHAR(64),
+    consent_state VARCHAR(30) NOT NULL DEFAULT 'UNKNOWN',
+    purpose VARCHAR(255) NOT NULL,
+    channel VARCHAR(30) NOT NULL,
+    recorded_by VARCHAR(50) NOT NULL,
+    recorded_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMPTZ,
+    notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS followup_preferences (
+    preference_id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    preferred_channel VARCHAR(30) NOT NULL DEFAULT 'OPERATOR_CALLBACK',
+    preferred_time_window VARCHAR(50),
+    days_allowed JSONB DEFAULT '[]'::jsonb,
+    safe_to_contact BOOLEAN DEFAULT TRUE,
+    preferred_language VARCHAR(20) DEFAULT 'en-IN',
+    human_only BOOLEAN DEFAULT TRUE,
+    no_voicemail BOOLEAN DEFAULT FALSE,
+    no_text BOOLEAN DEFAULT FALSE,
+    timezone VARCHAR(50) DEFAULT 'Asia/Kolkata',
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS followups (
+    followup_id VARCHAR(64) PRIMARY KEY,
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    call_id VARCHAR(64),
+    created_by VARCHAR(50) NOT NULL,
+    assigned_to VARCHAR(50),
+    type VARCHAR(40) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'DRAFT',
+    priority VARCHAR(30) NOT NULL DEFAULT 'NORMAL',
+    requested_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    scheduled_for TIMESTAMPTZ NOT NULL,
+    due_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
+    consent_state VARCHAR(30) NOT NULL DEFAULT 'UNKNOWN',
+    safe_contact_window VARCHAR(50),
+    channel VARCHAR(30) NOT NULL DEFAULT 'OPERATOR_CALLBACK',
+    purpose VARCHAR(255) NOT NULL,
+    notes_ref VARCHAR(64),
+    citation_ref VARCHAR(128),
+    source_event VARCHAR(64),
+    last_attempt_at TIMESTAMPTZ,
+    attempt_count INT DEFAULT 0,
+    max_attempts INT DEFAULT 2,
+    outcome VARCHAR(40),
+    policy_version VARCHAR(20) DEFAULT 'v1.0',
+    blocked_reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS followup_attempts (
+    attempt_id VARCHAR(64) PRIMARY KEY,
+    followup_id VARCHAR(64) NOT NULL REFERENCES followups(followup_id),
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    attempt_number INT NOT NULL,
+    operator_id VARCHAR(50) NOT NULL,
+    channel VARCHAR(30) NOT NULL,
+    result VARCHAR(40) NOT NULL,
+    attempted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS followup_events (
+    event_id VARCHAR(64) PRIMARY KEY,
+    followup_id VARCHAR(64) NOT NULL REFERENCES followups(followup_id),
+    case_id VARCHAR(36) NOT NULL REFERENCES cases(id),
+    event_type VARCHAR(50) NOT NULL,
+    actor_id VARCHAR(50) NOT NULL,
+    previous_status VARCHAR(30),
+    new_status VARCHAR(30) NOT NULL,
+    reason TEXT,
+    details JSONB DEFAULT '{}'::jsonb,
+    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_followups_case_id ON followups(case_id);
+CREATE INDEX IF NOT EXISTS idx_followups_status ON followups(status);
+CREATE INDEX IF NOT EXISTS idx_followups_scheduled_for ON followups(scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_followups_due_at ON followups(due_at);
+CREATE INDEX IF NOT EXISTS idx_followups_assigned_to ON followups(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_followups_consent_state ON followups(consent_state);
+CREATE INDEX IF NOT EXISTS idx_followups_priority ON followups(priority);
+CREATE INDEX IF NOT EXISTS idx_followup_attempts_followup_id ON followup_attempts(followup_id);
+CREATE INDEX IF NOT EXISTS idx_followup_events_followup_id ON followup_events(followup_id);
+
 -- Seed baseline roles
 INSERT INTO roles (id, name, permissions) VALUES
     ('role-admin', 'ADMIN', '["*"]'::jsonb),

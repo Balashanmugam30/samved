@@ -13,6 +13,10 @@ os.environ["EXOTEL_ACCOUNT_SID"] = ""
 os.environ["EXOTEL_API_KEY"] = ""
 os.environ["EXOTEL_API_TOKEN"] = ""
 os.environ["EXOTEL_WEBHOOK_SECRET"] = ""
+os.environ["PUBLIC_BASE_URL"] = "http://localhost:8000"
+os.environ["PUBLIC_WS_BASE_URL"] = "ws://localhost:8000"
+os.environ["EXOTEL_WEBHOOK_BASE_URL"] = ""
+os.environ["EXOTEL_STREAM_URL"] = ""
 
 from app.core.config import get_settings
 get_settings.cache_clear()

@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import json
 import logging
 from typing import Any, AsyncIterator, Dict, Optional
@@ -106,7 +106,8 @@ class SarvamSTTProvider:
     async def send_audio_chunk(self, session_id: str, chunk_bytes: bytes) -> None:
         """Sends raw 16-bit 8000Hz PCM chunk to Sarvam STT WebSocket."""
         ws = self._active_connections.get(session_id)
-        if ws and not ws.closed:
+        is_closed = getattr(ws, "closed", False) or getattr(ws, "close_code", None) is not None
+        if ws and not is_closed:
             try:
                 await ws.send(chunk_bytes)
             except Exception as e:

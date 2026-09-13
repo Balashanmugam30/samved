@@ -66,7 +66,8 @@ async def exotel_inbound_webhook(request: Request):
     existing_session = await telephony_session_manager.get_by_provider_call_id(call_sid)
     if existing_session:
         logger.info(f"Duplicate inbound webhook for CallSid {call_sid}; returning existing stream.")
-        ws_url = f"{settings.PUBLIC_WS_BASE_URL}/ws/telephony/exotel/{existing_session.session_id}"
+        stream_base = settings.EXOTEL_STREAM_URL or f"{settings.PUBLIC_WS_BASE_URL}/ws/telephony/exotel"
+        ws_url = f"{stream_base.rstrip('/')}/{existing_session.session_id}"
         return exotel_provider.create_streaming_instruction(existing_session.session_id, ws_url)
 
     # 4. Provision fresh Call and Realtime Session
@@ -102,7 +103,8 @@ async def exotel_inbound_webhook(request: Request):
     )
     await ws_event_manager.broadcast_to_session(session_id, start_envelope)
 
-    ws_stream_url = f"{settings.PUBLIC_WS_BASE_URL}/ws/telephony/exotel/{session_id}"
+    stream_base = settings.EXOTEL_STREAM_URL or f"{settings.PUBLIC_WS_BASE_URL}/ws/telephony/exotel"
+    ws_stream_url = f"{stream_base.rstrip('/')}/{session_id}"
     logger.info(f"Handled inbound call {call_sid} -> session {session_id}, stream: {ws_stream_url}")
 
     # Return Exotel Streaming Applet instruction
@@ -145,13 +147,19 @@ async def telephony_doctor() -> Dict[str, Any]:
     live_ready = is_live and has_exotel and has_sarvam and has_gemini and is_public
     simulation_ready = True  # Mock providers are always available
 
+    webhook_base = settings.EXOTEL_WEBHOOK_BASE_URL or f"{settings.PUBLIC_BASE_URL}/v1/telephony"
+    stream_base = settings.EXOTEL_STREAM_URL or f"{settings.PUBLIC_WS_BASE_URL}/ws/telephony/exotel"
+
     return {
         "app_mode": settings.APP_MODE,
         "telephony_provider": "Exotel",
         "exotel_credentials_present": has_exotel,
         "live_mode_safe_to_start": live_ready,
-        "public_webhook_base_url": settings.EXOTEL_WEBHOOK_BASE_URL or f"{settings.PUBLIC_BASE_URL}/v1/telephony",
-        "public_ws_base_url": settings.EXOTEL_STREAM_URL or f"{settings.PUBLIC_WS_BASE_URL}/v1/telephony/stream",
+        "public_webhook_base_url": webhook_base,
+        "public_ws_base_url": stream_base,
+        "exotel_inbound_webhook_url": f"{webhook_base.rstrip('/')}/exotel/inbound",
+        "exotel_status_callback_url": f"{webhook_base.rstrip('/')}/exotel/status",
+        "exotel_stream_url_template": f"{stream_base.rstrip('/')}/{{session_id}}",
         "providers": {
             "telephony_exotel": "configured" if has_exotel else "not_configured",
             "speech_sarvam_stt": "configured" if has_sarvam else "not_configured",

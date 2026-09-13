@@ -86,24 +86,70 @@ EXOTEL_WEBHOOK_SECRET=your_webhook_hmac_secret
 
 ---
 
-## 4. Local Development Public Tunnel
+## 4. SAMVED LIVE TELEPHONY USING CLOUDFLARE QUICK TUNNEL
 
-Exotel's telephony servers cannot connect to `localhost:8000`. To test live webhooks during development, expose port 8000 through a secure tunnel:
+> [!WARNING]
+> **Ephemeral Endpoint Notice:**
+> Cloudflare Quick Tunnel (`*.trycloudflare.com`) provides a free, temporary public ingress endpoint.
+> - Whenever the Quick Tunnel process is restarted, Cloudflare assigns a new random subdomain.
+> - Quick Tunnels are for local integration testing, live demo evaluation, and SIH presentation only — **NOT permanent production infrastructure**.
+> - When the tunnel restarts, update `PUBLIC_BASE_URL` and `PUBLIC_WS_BASE_URL` in `apps/api/.env`, restart Docker containers, and update the Exotel App Bazaar applet URLs.
 
-### Using Cloudflare Tunnel (`cloudflared`)
-```bash
-cloudflared tunnel --url http://localhost:8000
-```
+### Current Quick Tunnel Configuration
+- **Local Origin**: `http://localhost:8000`
+- **Current Public HTTPS Base**: `https://cave-gras-treatments-supplied.trycloudflare.com`
+- **Current Public WSS Base**: `wss://cave-gras-treatments-supplied.trycloudflare.com`
+- **Current Exotel Inbound Webhook**: `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/inbound`
+- **Current Exotel Status Callback**: `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/status`
+- **Current Exotel Stream (Voicebot WebSocket)**: `wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel/{CustomField}`
 
-### Using ngrok
-```bash
-ngrok http 8000
-```
-Copy the generated HTTPS URL (e.g. `https://abc-123.ngrok.app`) and update your `.env`:
-```env
-PUBLIC_BASE_URL=https://abc-123.ngrok.app
-PUBLIC_WS_BASE_URL=wss://abc-123.ngrok.app
-```
+### Step-by-Step Operator Workflow
+
+1. **Start Docker Stack**:
+   ```bash
+   docker compose up -d
+   ```
+2. **Confirm Container Health**:
+   ```bash
+   docker compose ps
+   ```
+3. **Start Cloudflare Quick Tunnel** (runs in a dedicated PowerShell/bash window):
+   ```bash
+   cloudflared tunnel --url http://localhost:8000
+   ```
+4. **Copy the Generated Hostname**:
+   Note the `https://<random-name>.trycloudflare.com` URL emitted in the tunnel logs.
+5. **Update Local `apps/api/.env` Only**:
+   ```env
+   PUBLIC_BASE_URL=https://cave-gras-treatments-supplied.trycloudflare.com
+   PUBLIC_WS_BASE_URL=wss://cave-gras-treatments-supplied.trycloudflare.com
+   EXOTEL_WEBHOOK_BASE_URL=https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony
+   EXOTEL_STREAM_URL=wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel
+   ```
+6. **Restart API Container**:
+   ```bash
+   docker compose down
+   docker compose up -d
+   ```
+7. **Verify Public Diagnostics**:
+   ```bash
+   curl https://cave-gras-treatments-supplied.trycloudflare.com/healthz
+   curl https://cave-gras-treatments-supplied.trycloudflare.com/ready
+   curl https://cave-gras-treatments-supplied.trycloudflare.com/version
+   curl https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/doctor
+   ```
+8. **Configure Exotel App Bazaar Flow**:
+   - In the **Passthru Applet**: Set URL to `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/inbound` (Method: POST).
+   - In the **Voicebot / Stream Applet**: Set Stream URL to `wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel/{CustomField}` (Format: 16-bit 8000Hz PCM Mono, Direction: Both).
+   - In the **Status Passthru Applet**: Set URL to `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/status` (Method: POST).
+9. **Place a Controlled Test Call**:
+   Dial the Exotel Virtual Number from a verified mobile phone.
+10. **Inspect SAMVED Logs & Operator Console**:
+   ```bash
+   docker compose logs -f api
+   ```
+   Open `http://localhost:3000/calls` to observe the call appearing live with real-time Tamil/Indic transcript, SVI vulnerability gauge, safety triggers, and audio telemetry.
+
 
 ---
 

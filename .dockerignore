@@ -1,0 +1,50 @@
+﻿# Version control
+.git
+.gitignore
+
+# Dependencies
+node_modules
+**/node_modules
+.pnpm-store
+
+# Python virtual environments & caches
+.venv
+apps/api/.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache
+
+# Build outputs & caches
+.next
+apps/web/.next
+dist
+build
+*.tsbuildinfo
+
+# Testing & Coverage artifacts
+coverage
+playwright-report
+test-results
+.nyc_output
+
+# IDE & OS files
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs & temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.turbo
+
+# Local environment files
+.env.local
+.env.*.local

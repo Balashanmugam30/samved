@@ -53,7 +53,14 @@ To route live telephone calls from a mobile device to SAMVED:
 
 ## 3. Environment Variables
 
-Configure the following parameters in your `.env` file (never commit real values to git):
+Configure the following parameters in `apps/api/.env` (never commit real values or files containing secrets to git):
+
+> [!IMPORTANT]
+> **LIVE Mode Invariants:**
+> - Set `APP_MODE=LIVE` and `EXOTEL_ENABLED=true` to enable real Exotel call processing.
+> - Real provider credentials for Exotel, Sarvam AI (ASR/TTS), and Google Gemini (LLM) must be provided in `apps/api/.env`.
+> - Public HTTPS/WSS URLs (`PUBLIC_BASE_URL`, `PUBLIC_WS_BASE_URL`, `EXOTEL_WEBHOOK_BASE_URL`, `EXOTEL_STREAM_URL`) are required; Exotel cannot route to `localhost`.
+> - `apps/api/.env` is strictly gitignored and excluded from Docker build context.
 
 ```env
 # Telephony Mode

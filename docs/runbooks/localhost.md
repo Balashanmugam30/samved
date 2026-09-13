@@ -12,14 +12,39 @@ This runbook guides operators and engineers through running and verifying SAMVED
 - Python >= 3.11 with `uv`
 - Git
 
-### 1.2 Start Backend
+### 1.2 Execution Modes & Addressing
+
+SAMVED supports both direct Windows host execution and containerized Docker Compose execution:
+
+| Mode | `DATABASE_URL` | `REDIS_URL` | Environment Source |
+|---|---|---|---|
+| **Direct Windows** | `postgresql+asyncpg://...localhost:5432/...` | `redis://localhost:6379/0` | `apps/api/.env` (read natively) |
+| **Docker Compose** | `postgresql+asyncpg://...postgres:5432/...` | `redis://redis:6379/0` | `docker-compose.yml` overrides container hostnames; loads `apps/api/.env` via `env_file:` |
+
+> [!IMPORTANT]
+> **Secret Hygiene:** `apps/api/.env` contains sensitive provider credentials (Exotel, Sarvam, Gemini) and is strictly gitignored. Never commit it or publish it.
+
+### 1.3 Running Direct on Host (Windows)
 ```bash
-# In terminal 1:
+# In terminal 1 (Postgres & Redis running via Docker or native):
+docker compose up -d postgres redis
+
+# Run backend:
 uv --directory apps/api sync
 uv --directory apps/api run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 1.3 Start Frontend
+### 1.4 Running via Docker Compose
+```bash
+# Spins up PostgreSQL, Redis, API, and Web:
+docker compose up -d
+
+# Verify container health and mode:
+docker compose ps
+docker compose exec api python -c "import os; print('MODE:', os.getenv('APP_MODE'))"
+```
+
+### 1.5 Start Frontend (When running outside Docker)
 ```bash
 # In terminal 2:
 pnpm install
@@ -29,6 +54,7 @@ pnpm --filter @samved/web dev
 
 The web console will be accessible at: `http://localhost:3000`
 The backend API docs will be at: `http://localhost:8000/docs`
+
 
 ---
 

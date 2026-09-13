@@ -44,5 +44,49 @@ SAMVED supports 4 primary deployment modes governed by `APP_ENV` and `APP_MODE`:
 > When `APP_MODE == "LIVE"` or `APP_ENV == "production"`:
 > 1. All `/v1/demo/reset` requests return `403 FORBIDDEN`.
 > 2. Synthetic database overwrites are completely disabled.
-> 3. Strict signature verification is enforced on all incoming telephony webhooks.
+> 3. Strict signature verification is enforced on all incoming telephony webhooks when configured.
 > 4. Health checks (`/ready`) will report `503 NOT_READY` if live database or live telephony credentials are missing.
+
+---
+
+## 4. Host Network Addressing: Local Windows vs. Docker Compose
+
+To ensure seamless execution whether running directly on the developer host or containerized via Docker Compose, network service addressing is governed by execution context:
+
+| Context | `DATABASE_URL` Host | `REDIS_URL` Host | Resolution Mechanism |
+|---|---|---|---|
+| **Direct Windows API** | `localhost:5432` | `localhost:6379` | Read directly from `apps/api/.env` where containers expose ports `5432:5432` and `6379:6379`. |
+| **Docker Compose API** | `postgres:5432` | `redis:6379` | Overridden in `docker-compose.yml` under `services.api.environment` to resolve Docker container service names over the internal bridge network. |
+
+### Configuration Precedence in Docker Compose
+Docker Compose loads `apps/api/.env` via `env_file:`:
+- All provider keys (`SARVAM_API_KEY`, `GEMINI_API_KEY`, `EXOTEL_*`), `APP_MODE`, and security parameters are ingested from `apps/api/.env`.
+- `DATABASE_URL` and `REDIS_URL` are explicitly set under `services.api.environment`, taking precedence over the localhost URLs in `apps/api/.env` and directing traffic to the internal container bridge.
+
+---
+
+## 5. Live Mode Deployment Requirements
+
+When transitioning to `APP_MODE=LIVE`:
+1. **Real Provider Credentials Required**:
+   - `EXOTEL_ACCOUNT_SID`, `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`
+   - `SARVAM_API_KEY` (minimum 8 characters)
+   - `GEMINI_API_KEY` (minimum 8 characters)
+2. **Public Ingress Endpoint Required**:
+   - Telephony carriers (Exotel) cannot reach private `localhost` addresses.
+   - `PUBLIC_BASE_URL` (HTTPS) and `PUBLIC_WS_BASE_URL` (WSS) must resolve to a valid public hostname (e.g. Cloudflare Tunnel, ngrok, or cloud reverse proxy).
+   - `EXOTEL_WEBHOOK_BASE_URL` and `EXOTEL_STREAM_URL` point to the respective webhook routes on this public host.
+3. **Exotel App Bazaar Flow**:
+   - Passthru applet configured for `POST /v1/telephony/exotel/inbound`.
+   - Voicebot / Stream applet configured for bidirectional 16-bit 8kHz PCM streaming to `wss://<DOMAIN>/ws/telephony/exotel/{CustomField}`.
+
+---
+
+## 6. Secret Configuration & Governance Notice
+
+> [!IMPORTANT]
+> **Strict Secret Isolation:**
+> `apps/api/.env` contains local, confidential runtime secrets and credentials. It is strictly excluded from version control via `.gitignore` and `.dockerignore`.
+> - **NEVER** commit `apps/api/.env` or any `.env*` variant containing plaintext keys to Git.
+> - **NEVER** bake credentials into Dockerfiles or client-facing bundles.
+> - The Next.js web application is completely isolated from backend provider secrets. Only non-sensitive variables prefixed with `NEXT_PUBLIC_` are exposed to the browser.

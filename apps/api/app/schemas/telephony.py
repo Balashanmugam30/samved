@@ -41,12 +41,21 @@ class AudioFrame(BaseModel):
 # Exotel Inbound Webhook Payload (HTTP Form or JSON)
 class ExotelInboundPayload(BaseModel):
     CallSid: str
-    From: str
-    To: str
+    From: Optional[str] = None
+    To: Optional[str] = None
+    CallFrom: Optional[str] = None
+    CallTo: Optional[str] = None
     Direction: Optional[str] = "inbound"
     CallType: Optional[str] = "trans"
     Created: Optional[str] = None
+    CurrentTime: Optional[str] = None
     DialWhomNumber: Optional[str] = None
+    CustomField: Optional[str] = None
+
+
+class ExotelVoiceBotResolverResponse(BaseModel):
+    """Response contract for Exotel VoiceBot dynamic WSS resolver (HTTP GET)."""
+    url: str
 
 
 # Exotel Status Callback Payload

@@ -139,8 +139,16 @@ EXOTEL_WEBHOOK_SECRET=your_webhook_hmac_secret
    curl https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/doctor
    ```
 8. **Configure Exotel App Bazaar Flow**:
-   - In the **Passthru Applet**: Set URL to `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/inbound` (Method: POST).
-   - In the **Voicebot / Stream Applet**: Set Stream URL to `wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel/{CustomField}` (Format: 16-bit 8000Hz PCM Mono, Direction: Both).
+   - **Option A (Recommended: VoiceBot Applet with Dynamic URL)**:
+     - In the **Voicebot Applet**: Configure **Dynamic WSS URL** with:
+       - **URL**: `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/inbound`
+       - **HTTP Method**: `GET`
+       - Exotel calls this resolver with call query parameters (`CallSid`, `CallFrom`, `CallTo`, `Direction`, `DialWhomNumber`, etc.).
+       - SAMVED returns `{"url": "wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel/{session_id}"}` with HTTP 200 `application/json`.
+       - Exotel automatically connects its media stream to the returned dynamic WSS endpoint.
+   - **Option B (Passthru + Static Stream Applet)**:
+     - In the **Passthru Applet**: Set URL to `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/inbound` (Method: POST).
+     - In the **Voicebot / Stream Applet**: Set Stream URL to `wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel/{CustomField}` (Format: 16-bit 8000Hz PCM Mono, Direction: Both).
    - In the **Status Passthru Applet**: Set URL to `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/status` (Method: POST).
 9. **Place a Controlled Test Call**:
    Dial the Exotel Virtual Number from a verified mobile phone.

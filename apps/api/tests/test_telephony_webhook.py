@@ -88,3 +88,129 @@ def test_simulation_call_endpoint(client):
     assert data["session_id"].startswith("SESS-")
     assert data["masked_caller_number"] == "+91******2233"
     assert data["frames_scheduled"] == 5
+
+
+def test_exotel_voicebot_get_resolver_success(client):
+    """Exotel VoiceBot applet dynamic WSS resolver invokes GET and expects 200 {"url": "wss://..."}."""
+    test_call_sid = f"get-exo-call-{uuid.uuid4().hex[:8]}"
+    query_params = {
+        "CallSid": test_call_sid,
+        "CallFrom": "+919876543210",
+        "CallTo": "08045678901",
+        "Direction": "incoming",
+        "From": "+919876543210",
+        "To": "08045678901",
+        "CurrentTime": "2026-09-13 14:20:00",
+        "DialWhomNumber": "08045678901",
+        "CallType": "trans",
+        "Created": "2026-09-13 14:20:00",
+    }
+
+    response = client.get("/v1/telephony/exotel/inbound", params=query_params)
+    assert response.status_code == 200
+    assert "application/json" in response.headers.get("content-type", "")
+
+    data = response.json()
+    # Contract: response contains expected url contract
+    assert "url" in data
+    assert data["url"].startswith("ws://") or data["url"].startswith("wss://")
+
+    # Session ID must be correctly represented in the stream URL path
+    stream_url = data["url"]
+    assert "/ws/telephony/exotel/SESS-" in stream_url
+    session_id = stream_url.rstrip("/").split("/")[-1]
+    assert session_id.startswith("SESS-")
+
+    # Verify session was created and masked in session manager
+    active_sessions = client.get("/v1/telephony/sessions").json()
+    matched = [s for s in active_sessions if s["session_id"] == session_id]
+    assert len(matched) == 1
+    assert matched[0]["caller_masked_number"] == "+91******3210"
+    assert matched[0]["state"] in {"RINGING", "CONNECTING"}
+
+
+def test_exotel_voicebot_get_resolver_wss_scheme(client, monkeypatch):
+    """Verifies that with Cloudflare Quick Tunnel / production configuration, the returned URL is wss://."""
+    monkeypatch.setenv(
+        "EXOTEL_STREAM_URL",
+        "wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel",
+    )
+    get_settings.cache_clear()
+
+    test_call_sid = f"wss-test-{uuid.uuid4().hex[:8]}"
+    query_params = {
+        "CallSid": test_call_sid,
+        "CallFrom": "+919876543210",
+        "CallTo": "08045678901",
+        "Direction": "incoming",
+        "From": "+919876543210",
+        "To": "08045678901",
+    }
+
+    response = client.get("/v1/telephony/exotel/inbound", params=query_params)
+    assert response.status_code == 200
+    assert "application/json" in response.headers.get("content-type", "")
+
+    data = response.json()
+    assert "url" in data
+    # Must be explicitly wss://
+    assert data["url"].startswith("wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel/SESS-")
+
+    # Clean up setting cache
+    get_settings.cache_clear()
+
+
+def test_exotel_voicebot_get_resolver_idempotency(client):
+    """Repeated GET requests from Exotel for the same CallSid must return identical WSS URL without duplicating session."""
+    test_call_sid = f"get-idempotent-{uuid.uuid4().hex[:8]}"
+    query_params = {
+        "CallSid": test_call_sid,
+        "CallFrom": "+919123456789",
+        "CallTo": "14566",
+        "Direction": "inbound",
+    }
+
+    resp1 = client.get("/v1/telephony/exotel/inbound", params=query_params)
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+
+    resp2 = client.get("/v1/telephony/exotel/inbound", params=query_params)
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+
+    assert data1["url"] == data2["url"]
+
+
+def test_exotel_voicebot_get_resolver_missing_call_sid(client):
+    """GET without CallSid must return 400 Bad Request."""
+    response = client.get("/v1/telephony/exotel/inbound", params={"CallFrom": "+919999999999"})
+    assert response.status_code == 400
+    data = response.json()
+    assert "CallSid" in data["error"]["message"]
+
+
+def test_exotel_get_and_post_cross_idempotency(client):
+    """If Exotel invokes GET resolver first and then sends POST webhook, both must correlate to the same session."""
+    test_call_sid = f"cross-idem-{uuid.uuid4().hex[:8]}"
+    get_params = {
+        "CallSid": test_call_sid,
+        "CallFrom": "+919988776655",
+        "CallTo": "14566",
+    }
+    get_resp = client.get("/v1/telephony/exotel/inbound", params=get_params)
+    assert get_resp.status_code == 200
+    get_data = get_resp.json()
+    sess_from_get = get_data["url"].rstrip("/").split("/")[-1]
+
+    post_payload = {
+        "CallSid": test_call_sid,
+        "From": "+919988776655",
+        "To": "14566",
+    }
+    post_resp = client.post("/v1/telephony/exotel/inbound", json=post_payload)
+    assert post_resp.status_code == 200
+    post_data = post_resp.json()
+
+    assert post_data["session_id"] == sess_from_get
+    assert post_data["stream_url"] == get_data["url"]
+

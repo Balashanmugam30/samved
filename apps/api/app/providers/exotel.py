@@ -125,11 +125,16 @@ class ExotelTelephonyProvider:
         """Returns the streaming applet instruction for Exotel to connect to our WebSocket."""
         return {
             "action": "stream",
+            "url": ws_stream_url,
             "stream_url": ws_stream_url,
             "session_id": session_id,
             "format": "pcm_8000_16bit_mono",
             "tracks": ["inbound", "outbound"],
         }
+
+    def create_voicebot_resolver_response(self, ws_stream_url: str) -> Dict[str, str]:
+        """Returns the dynamic VoiceBot resolver response for Exotel HTTP GET."""
+        return {"url": ws_stream_url}
 
     def normalize_media_event(
         self,

@@ -15,6 +15,7 @@ from app.schemas.events import EventEnvelope, EventType
 from app.schemas.telephony import (
     ExotelInboundPayload,
     ExotelStatusPayload,
+    ExotelVoiceBotResolverResponse,
     SimulationCallRequest,
     TelephonySessionInfo,
 )
@@ -27,9 +28,139 @@ exotel_provider = ExotelTelephonyProvider()
 mock_provider = MockTelephonyProvider()
 
 
+async def _provision_or_get_inbound_session(
+    call_sid: str,
+    from_number: str,
+    to_number: str,
+    raw_data: Optional[Dict[str, Any]] = None,
+) -> tuple[str, str]:
+    """Idempotently provisions or retrieves an inbound telephony session.
+
+    Returns (session_id, ws_stream_url).
+    """
+    raw_data = raw_data or {}
+    settings = get_settings()
+    stream_base = settings.EXOTEL_STREAM_URL or f"{settings.PUBLIC_WS_BASE_URL}/ws/telephony/exotel"
+
+    # 1. Idempotency check: reuse existing session if this call was retried
+    existing_session = await telephony_session_manager.get_by_provider_call_id(call_sid)
+    if existing_session:
+        logger.info(f"Duplicate inbound call for CallSid {call_sid}; returning existing stream.")
+        ws_url = f"{stream_base.rstrip('/')}/{existing_session.session_id}"
+        if ws_url.startswith("https://"):
+            ws_url = "wss://" + ws_url[len("https://") :]
+        elif ws_url.startswith("http://"):
+            ws_url = "ws://" + ws_url[len("http://") :]
+        return existing_session.session_id, ws_url
+
+    # 2. Provision fresh Call and Realtime Session
+    call_id = f"CALL-{uuid.uuid4().hex[:8]}"
+    session_id = f"SESS-{uuid.uuid4().hex[:8]}"
+
+    session = await telephony_session_manager.create_session(
+        session_id=session_id,
+        call_id=call_id,
+        provider_call_id=call_sid,
+        caller_number=from_number,
+        provider="exotel",
+    )
+
+    # Transition state to RINGING then CONNECTING
+    if session.state_machine.can_transition_to(CallState.RINGING):
+        session.state_machine.transition_to(CallState.RINGING, reason="inbound_call_received")
+    if session.state_machine.can_transition_to(CallState.CONNECTING):
+        session.state_machine.transition_to(CallState.CONNECTING, reason="stream_instruction_issued")
+
+    # 3. Emit canonical CALL_STARTED domain event
+    start_envelope = EventEnvelope(
+        event_type=EventType.CALL_STARTED,
+        session_id=session_id,
+        call_id=call_id,
+        payload={
+            "telephony_provider": "exotel",
+            "provider_call_id": call_sid,
+            "caller_masked_number": session.masked_caller_number,
+            "destination_number": to_number,
+            "direction": raw_data.get("Direction", "inbound"),
+            "current_time": raw_data.get("CurrentTime"),
+            "mode": settings.APP_MODE,
+        },
+    )
+    await ws_event_manager.broadcast_to_session(session_id, start_envelope)
+
+    ws_stream_url = f"{stream_base.rstrip('/')}/{session_id}"
+    if ws_stream_url.startswith("https://"):
+        ws_stream_url = "wss://" + ws_stream_url[len("https://") :]
+    elif ws_stream_url.startswith("http://"):
+        ws_stream_url = "ws://" + ws_stream_url[len("http://") :]
+
+    logger.info(f"Handled inbound call {call_sid} -> session {session_id}, stream: {ws_stream_url}")
+    return session_id, ws_stream_url
+
+
+@telephony_router.get(
+    "/exotel/inbound",
+    status_code=status.HTTP_200_OK,
+    response_model=ExotelVoiceBotResolverResponse,
+)
+async def exotel_inbound_voicebot_resolver(request: Request):
+    """Dynamic VoiceBot WSS resolver for Exotel incoming calls.
+
+    Exotel invokes this endpoint via HTTP GET with call query parameters.
+    Returns HTTP 200 application/json {"url": "wss://..."}
+    """
+    headers = dict(request.headers)
+
+    # 1. Provider signature validation (if enabled)
+    if not exotel_provider.validate_webhook(headers, b""):
+        logger.warning("Rejected Exotel GET resolver: invalid HMAC signature.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid provider webhook signature.",
+        )
+
+    # 2. Extract call metadata from query parameters
+    params = dict(request.query_params)
+    call_sid = (
+        params.get("CallSid")
+        or params.get("call_sid")
+        or params.get("callSid")
+        or params.get("Sid")
+    )
+    if not call_sid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing required CallSid parameter.",
+        )
+
+    from_number = (
+        params.get("CallFrom")
+        or params.get("From")
+        or params.get("from")
+        or params.get("caller_number")
+        or "anonymous"
+    )
+    to_number = (
+        params.get("CallTo")
+        or params.get("To")
+        or params.get("to")
+        or params.get("DialWhomNumber")
+        or "14566"
+    )
+
+    session_id, ws_stream_url = await _provision_or_get_inbound_session(
+        call_sid=call_sid,
+        from_number=from_number,
+        to_number=to_number,
+        raw_data=params,
+    )
+
+    return exotel_provider.create_voicebot_resolver_response(ws_stream_url)
+
+
 @telephony_router.post("/exotel/inbound", status_code=status.HTTP_200_OK)
 async def exotel_inbound_webhook(request: Request):
-    """Inbound call webhook from Exotel telephony cloud.
+    """Inbound call webhook from Exotel telephony cloud (POST).
 
     Provisions a call record, initializes a realtime session, and returns the streaming instruction.
     """
@@ -52,60 +183,39 @@ async def exotel_inbound_webhook(request: Request):
         form_data = await request.form()
         data = dict(form_data)
 
-    call_sid = data.get("CallSid") or data.get("call_sid")
-    from_number = data.get("From") or data.get("from") or "anonymous"
-    to_number = data.get("To") or data.get("to") or "14566"
-
+    call_sid = (
+        data.get("CallSid")
+        or data.get("call_sid")
+        or data.get("callSid")
+        or data.get("Sid")
+    )
     if not call_sid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing required CallSid parameter.",
         )
 
-    # 3. Idempotency check: reuse existing session if this webhook was retried
-    existing_session = await telephony_session_manager.get_by_provider_call_id(call_sid)
-    if existing_session:
-        logger.info(f"Duplicate inbound webhook for CallSid {call_sid}; returning existing stream.")
-        stream_base = settings.EXOTEL_STREAM_URL or f"{settings.PUBLIC_WS_BASE_URL}/ws/telephony/exotel"
-        ws_url = f"{stream_base.rstrip('/')}/{existing_session.session_id}"
-        return exotel_provider.create_streaming_instruction(existing_session.session_id, ws_url)
-
-    # 4. Provision fresh Call and Realtime Session
-    call_id = f"CALL-{uuid.uuid4().hex[:8]}"
-    session_id = f"SESS-{uuid.uuid4().hex[:8]}"
-
-    session = await telephony_session_manager.create_session(
-        session_id=session_id,
-        call_id=call_id,
-        provider_call_id=call_sid,
-        caller_number=from_number,
-        provider="exotel",
+    from_number = (
+        data.get("CallFrom")
+        or data.get("From")
+        or data.get("from")
+        or data.get("caller_number")
+        or "anonymous"
+    )
+    to_number = (
+        data.get("CallTo")
+        or data.get("To")
+        or data.get("to")
+        or data.get("DialWhomNumber")
+        or "14566"
     )
 
-    # Transition state to RINGING then CONNECTING
-    if session.state_machine.can_transition_to(CallState.RINGING):
-        session.state_machine.transition_to(CallState.RINGING, reason="inbound_webhook_received")
-    if session.state_machine.can_transition_to(CallState.CONNECTING):
-        session.state_machine.transition_to(CallState.CONNECTING, reason="stream_instruction_issued")
-
-    # 5. Emit canonical CALL_STARTED domain event
-    start_envelope = EventEnvelope(
-        event_type=EventType.CALL_STARTED,
-        session_id=session_id,
-        call_id=call_id,
-        payload={
-            "telephony_provider": "exotel",
-            "provider_call_id": call_sid,
-            "caller_masked_number": session.masked_caller_number,
-            "destination_number": to_number,
-            "mode": settings.APP_MODE,
-        },
+    session_id, ws_stream_url = await _provision_or_get_inbound_session(
+        call_sid=call_sid,
+        from_number=from_number,
+        to_number=to_number,
+        raw_data=data,
     )
-    await ws_event_manager.broadcast_to_session(session_id, start_envelope)
-
-    stream_base = settings.EXOTEL_STREAM_URL or f"{settings.PUBLIC_WS_BASE_URL}/ws/telephony/exotel"
-    ws_stream_url = f"{stream_base.rstrip('/')}/{session_id}"
-    logger.info(f"Handled inbound call {call_sid} -> session {session_id}, stream: {ws_stream_url}")
 
     # Return Exotel Streaming Applet instruction
     return exotel_provider.create_streaming_instruction(session_id, ws_stream_url)
@@ -158,6 +268,8 @@ async def telephony_doctor() -> Dict[str, Any]:
         "public_webhook_base_url": webhook_base,
         "public_ws_base_url": stream_base,
         "exotel_inbound_webhook_url": f"{webhook_base.rstrip('/')}/exotel/inbound",
+        "exotel_voicebot_resolver_url": f"{webhook_base.rstrip('/')}/exotel/inbound",
+        "exotel_voicebot_resolver_method": "GET",
         "exotel_status_callback_url": f"{webhook_base.rstrip('/')}/exotel/status",
         "exotel_stream_url_template": f"{stream_base.rstrip('/')}/{{session_id}}",
         "providers": {

@@ -97,11 +97,11 @@ EXOTEL_WEBHOOK_SECRET=your_webhook_hmac_secret
 
 ### Current Quick Tunnel Configuration
 - **Local Origin**: `http://localhost:8000`
-- **Current Public HTTPS Base**: `https://cave-gras-treatments-supplied.trycloudflare.com`
-- **Current Public WSS Base**: `wss://cave-gras-treatments-supplied.trycloudflare.com`
-- **Current Exotel Inbound Webhook**: `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/inbound`
-- **Current Exotel Status Callback**: `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/status`
-- **Current Exotel Stream (Voicebot WebSocket)**: `wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel/{CustomField}`
+- **Current Public HTTPS Base**: `https://pressure-faced-deutsche-used.trycloudflare.com`
+- **Current Public WSS Base**: `wss://pressure-faced-deutsche-used.trycloudflare.com`
+- **Current Exotel Inbound Webhook**: `https://pressure-faced-deutsche-used.trycloudflare.com/v1/telephony/exotel/inbound`
+- **Current Exotel Status Callback**: `https://pressure-faced-deutsche-used.trycloudflare.com/v1/telephony/exotel/status`
+- **Current Exotel Stream (Voicebot WebSocket)**: `wss://pressure-faced-deutsche-used.trycloudflare.com/ws/telephony/exotel/{CustomField}`
 
 ### Step-by-Step Operator Workflow
 
@@ -121,10 +121,10 @@ EXOTEL_WEBHOOK_SECRET=your_webhook_hmac_secret
    Note the `https://<random-name>.trycloudflare.com` URL emitted in the tunnel logs.
 5. **Update Local `apps/api/.env` Only**:
    ```env
-   PUBLIC_BASE_URL=https://cave-gras-treatments-supplied.trycloudflare.com
-   PUBLIC_WS_BASE_URL=wss://cave-gras-treatments-supplied.trycloudflare.com
-   EXOTEL_WEBHOOK_BASE_URL=https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony
-   EXOTEL_STREAM_URL=wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel
+   PUBLIC_BASE_URL=https://pressure-faced-deutsche-used.trycloudflare.com
+   PUBLIC_WS_BASE_URL=wss://pressure-faced-deutsche-used.trycloudflare.com
+   EXOTEL_WEBHOOK_BASE_URL=https://pressure-faced-deutsche-used.trycloudflare.com/v1/telephony
+   EXOTEL_STREAM_URL=wss://pressure-faced-deutsche-used.trycloudflare.com/ws/telephony/exotel
    ```
 6. **Restart API Container**:
    ```bash
@@ -133,23 +133,23 @@ EXOTEL_WEBHOOK_SECRET=your_webhook_hmac_secret
    ```
 7. **Verify Public Diagnostics**:
    ```bash
-   curl https://cave-gras-treatments-supplied.trycloudflare.com/healthz
-   curl https://cave-gras-treatments-supplied.trycloudflare.com/ready
-   curl https://cave-gras-treatments-supplied.trycloudflare.com/version
-   curl https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/doctor
+   curl https://pressure-faced-deutsche-used.trycloudflare.com/healthz
+   curl https://pressure-faced-deutsche-used.trycloudflare.com/ready
+   curl https://pressure-faced-deutsche-used.trycloudflare.com/version
+   curl https://pressure-faced-deutsche-used.trycloudflare.com/v1/telephony/doctor
    ```
 8. **Configure Exotel App Bazaar Flow**:
    - **Option A (Recommended: VoiceBot Applet with Dynamic URL)**:
      - In the **Voicebot Applet**: Configure **Dynamic WSS URL** with:
-       - **URL**: `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/inbound`
+       - **URL**: `https://pressure-faced-deutsche-used.trycloudflare.com/v1/telephony/exotel/inbound`
        - **HTTP Method**: `GET`
        - Exotel calls this resolver with call query parameters (`CallSid`, `CallFrom`, `CallTo`, `Direction`, `DialWhomNumber`, etc.).
-       - SAMVED returns `{"url": "wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel/{session_id}"}` with HTTP 200 `application/json`.
+       - SAMVED returns `{"url": "wss://pressure-faced-deutsche-used.trycloudflare.com/ws/telephony/exotel/{session_id}"}` with HTTP 200 `application/json`.
        - Exotel automatically connects its media stream to the returned dynamic WSS endpoint.
    - **Option B (Passthru + Static Stream Applet)**:
-     - In the **Passthru Applet**: Set URL to `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/inbound` (Method: POST).
-     - In the **Voicebot / Stream Applet**: Set Stream URL to `wss://cave-gras-treatments-supplied.trycloudflare.com/ws/telephony/exotel/{CustomField}` (Format: 16-bit 8000Hz PCM Mono, Direction: Both).
-   - In the **Status Passthru Applet**: Set URL to `https://cave-gras-treatments-supplied.trycloudflare.com/v1/telephony/exotel/status` (Method: POST).
+     - In the **Passthru Applet**: Set URL to `https://pressure-faced-deutsche-used.trycloudflare.com/v1/telephony/exotel/inbound` (Method: POST).
+     - In the **Voicebot / Stream Applet**: Set Stream URL to `wss://pressure-faced-deutsche-used.trycloudflare.com/ws/telephony/exotel/{CustomField}` (Format: 16-bit 8000Hz PCM Mono, Direction: Both).
+   - In the **Status Passthru Applet**: Set URL to `https://pressure-faced-deutsche-used.trycloudflare.com/v1/telephony/exotel/status` (Method: POST).
 9. **Place a Controlled Test Call**:
    Dial the Exotel Virtual Number from a verified mobile phone.
 10. **Inspect SAMVED Logs & Operator Console**:

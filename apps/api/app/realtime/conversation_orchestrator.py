@@ -21,6 +21,12 @@ from app.schemas.telephony import AudioFrame
 
 logger = logging.getLogger("samved.conversation.orchestrator")
 
+INITIAL_GREETINGS: Dict[str, str] = {
+    "ta-IN": "வணக்கம். இது SAMVED. உங்களுக்கு உதவி செய்ய நான் இருக்கிறேன். நீங்கள் பாதுகாப்பாக பேசலாம். என்ன நடந்தது என்று சொல்ல விரும்புகிறீர்களா?",
+    "hi-IN": "नमस्ते। यह SAMVED है। मैं आपकी मदद के लिए यहाँ हूँ। आप सुरक्षित रूप से बात कर सकते हैं। क्या आप बताना चाहेंगे कि क्या हुआ?",
+    "en-IN": "Hello. This is SAMVED. I am here to support you. You can speak safely. Would you like to tell me what happened?",
+}
+
 
 class ConversationOrchestrator:
     """Coordinates STT, Gemini reasoning, and Sarvam TTS synthesis for a voice call."""
@@ -160,6 +166,7 @@ class ConversationOrchestrator:
         if not event.is_final:
             if self.state == ConversationState.LISTENING:
                 self.transition_state(ConversationState.TRANSCRIBING, reason="partial_transcript")
+            logger.info(f"STT_PARTIAL: session={self.session_id}, text='{event.text}'")
             self.broadcast(
                 "TRANSCRIPT_PARTIAL",
                 {
@@ -174,6 +181,7 @@ class ConversationOrchestrator:
             return
 
         # 3. Handle final transcript (Turn boundary reached)
+        logger.info(f"STT_FINAL: session={self.session_id}, text='{event.text}', confidence={event.confidence}")
         self.active_latency.caller_speech_ended_at = time.time()
         self.active_latency.final_transcript_at = time.time()
 
@@ -545,6 +553,7 @@ class ConversationOrchestrator:
                         strategy.fallback_applied = True
 
             self.active_latency.llm_response_at = time.time()
+            logger.info(f"GEMINI_RESPONSE: session={self.session_id}, text_len={len(response.response_text)}")
 
             agent_utterance = Utterance(
                 speaker=TurnSpeaker.AGENT,
@@ -570,6 +579,7 @@ class ConversationOrchestrator:
 
             # 2. Transition to SPEAKING and synthesize TTS
             self.transition_state(ConversationState.SPEAKING, reason="tts_synthesis_started")
+            logger.info(f"TTS_STARTED: session={self.session_id}, text_len={len(response.response_text)}, lang={response.language}")
             self.broadcast(
                 "TTS_STARTED",
                 {"session_id": self.session_id, "call_id": self.call_id, "text_length": len(response.response_text)},
@@ -579,6 +589,7 @@ class ConversationOrchestrator:
                 text=response.response_text,
                 language_code=response.language,
             )
+            logger.info(f"TTS_COMPLETED: session={self.session_id}, pcm_bytes={len(pcm_audio) if pcm_audio else 0}")
 
             if pcm_audio:
                 self.active_latency.first_tts_frame_at = time.time()
@@ -618,6 +629,55 @@ class ConversationOrchestrator:
             logger.error(f"Error during AI turn for session {self.session_id}: {e}")
             self.transition_state(ConversationState.ERROR, reason=str(e))
             self.transition_state(ConversationState.LISTENING, reason="recovered_from_error")
+
+    async def trigger_initial_greeting(self) -> None:
+        """Plays initial safe deterministic greeting immediately upon stream start."""
+        if not self._is_running:
+            return
+
+        lang_val = self.current_language.value if hasattr(self.current_language, "value") else str(self.current_language)
+        greeting_text = INITIAL_GREETINGS.get(lang_val, INITIAL_GREETINGS["ta-IN"])
+
+        logger.info(f"Triggering initial greeting for session {self.session_id} (lang: {lang_val})")
+        self.transition_state(ConversationState.SPEAKING, reason="initial_greeting_started")
+        self.broadcast(
+            "INITIAL_GREETING_STARTED",
+            {
+                "session_id": self.session_id,
+                "call_id": self.call_id,
+                "language": lang_val,
+                "text": greeting_text,
+            },
+        )
+
+        try:
+            logger.info(f"TTS_STARTED: session={self.session_id}, initial_greeting=True, lang={lang_val}")
+            pcm_audio = await self.tts.synthesize(
+                text=greeting_text,
+                language_code=lang_val,
+            )
+            logger.info(f"TTS_COMPLETED: session={self.session_id}, initial_greeting=True, pcm_bytes={len(pcm_audio) if pcm_audio else 0}")
+
+            if pcm_audio:
+                frames = AudioStreamAdapter.slice_pcm_to_frames(pcm_audio)
+                for chunk in frames:
+                    if self.state != ConversationState.SPEAKING:
+                        logger.info(f"Initial greeting playback interrupted ({self.state})")
+                        break
+                    await self.outbound_queue.put(chunk)
+
+            self.broadcast(
+                "INITIAL_GREETING_ENDED",
+                {"session_id": self.session_id, "call_id": self.call_id},
+            )
+        except asyncio.CancelledError:
+            logger.info(f"Initial greeting cancelled for session {self.session_id}")
+            raise
+        except Exception as e:
+            logger.error(f"Error during initial greeting for session {self.session_id}: {e}")
+        finally:
+            if self.state == ConversationState.SPEAKING:
+                self.transition_state(ConversationState.LISTENING, reason="initial_greeting_completed")
 
     async def start(self) -> None:
         """Starts background STT receiver task."""

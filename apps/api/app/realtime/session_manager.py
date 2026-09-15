@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.core.telephony_state import CallState, CallStateMachine
 from app.realtime.conversation_orchestrator import ConversationOrchestrator
 from app.schemas.telephony import (
+    AudioDiagnosticsInfo,
     AudioDirection,
     AudioFormat,
     AudioFrame,
@@ -16,6 +17,57 @@ from app.schemas.telephony import (
 )
 
 logger = logging.getLogger("samved.telephony.session")
+
+
+class AudioTelemetry:
+    """Tracks structured real-time audio pipeline diagnostic counters for a call."""
+
+    def __init__(self):
+        self.inbound_frames_received: int = 0
+        self.inbound_pcm_bytes: int = 0
+        self.sarvam_stt_connected: bool = False
+        self.stt_partials_count: int = 0
+        self.stt_finals_count: int = 0
+        self.last_transcript: Optional[str] = None
+        self.initial_greeting_sent: bool = False
+        self.gemini_turns_triggered: int = 0
+        self.sarvam_tts_turns_triggered: int = 0
+        self.tts_audio_chunks_received: int = 0
+        self.tts_total_pcm_bytes: int = 0
+        self.outbound_frames_sent_to_exotel: int = 0
+        self.outbound_pcm_bytes_sent: int = 0
+        self.marks_sent: int = 0
+        self.marks_received: int = 0
+        self.barge_in_clears_sent: int = 0
+        self.barge_in_clears_received: int = 0
+        self.vad_speech_starts: int = 0
+        self.two_way_audio_verified: bool = False
+
+    def to_info(self) -> AudioDiagnosticsInfo:
+        return AudioDiagnosticsInfo(
+            inbound_frames_received=self.inbound_frames_received,
+            inbound_pcm_bytes=self.inbound_pcm_bytes,
+            sarvam_stt_connected=self.sarvam_stt_connected,
+            stt_partials_count=self.stt_partials_count,
+            stt_finals_count=self.stt_finals_count,
+            last_transcript=self.last_transcript,
+            initial_greeting_sent=self.initial_greeting_sent,
+            gemini_turns_triggered=self.gemini_turns_triggered,
+            sarvam_tts_turns_triggered=self.sarvam_tts_turns_triggered,
+            tts_audio_chunks_received=self.tts_audio_chunks_received,
+            tts_total_pcm_bytes=self.tts_total_pcm_bytes,
+            outbound_frames_sent_to_exotel=self.outbound_frames_sent_to_exotel,
+            outbound_pcm_bytes_sent=self.outbound_pcm_bytes_sent,
+            marks_sent=self.marks_sent,
+            marks_received=self.marks_received,
+            barge_in_clears_sent=self.barge_in_clears_sent,
+            barge_in_clears_received=self.barge_in_clears_received,
+            vad_speech_starts=self.vad_speech_starts,
+            two_way_audio_verified=self.two_way_audio_verified,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return self.to_info().model_dump()
 
 
 def mask_phone_number(raw_number: str) -> str:
@@ -100,6 +152,9 @@ class TelephonySession:
         self.inbound_bytes_count: int = 0
         self.sequence_gaps_count: int = 0
         self.dropped_frames_count: int = 0
+
+        # Audio pipeline diagnostics and telemetry
+        self.audio_telemetry = AudioTelemetry()
 
         # Subscribed callbacks for downstream consumers
         self.frame_consumers: Set[Any] = set()
@@ -341,6 +396,10 @@ class TelephonySession:
         self.inbound_frames_count += 1
         self.inbound_bytes_count += frame.payload_size_bytes
 
+        # Update real-time audio pipeline telemetry
+        self.audio_telemetry.inbound_frames_received += 1
+        self.audio_telemetry.inbound_pcm_bytes += frame.payload_size_bytes
+
         if len(self.inbound_buffer) == self.inbound_buffer.maxlen:
             self.dropped_frames_count += 1
 
@@ -399,6 +458,7 @@ class TelephonySession:
             safety_state=safety_state,
             safety_signals_count=len(self.active_safety_signals),
             is_active=self.state_machine.is_active,
+            audio_diagnostics=self.audio_telemetry.to_info(),
         )
 
 
@@ -469,6 +529,7 @@ class RealtimeSessionManager:
         self._call_id_map: Dict[str, str] = {}           # call_id -> session_id
         self._recent_sessions: Deque[Dict[str, Any]] = deque(maxlen=max_recent_history)
         self._recent_calls_map: Dict[str, Dict[str, Any]] = {}
+        self._recent_audio_diagnostics: Optional[Dict[str, Any]] = None
         self._lock = asyncio.Lock()
 
     async def create_session(
@@ -584,12 +645,27 @@ class RealtimeSessionManager:
             session.inbound_buffer.clear()
 
             # 6. Remove from active lookup maps to prevent memory leakage
+            self._recent_audio_diagnostics = session.audio_telemetry.to_dict()
             self._provider_call_id_map.pop(session.provider_call_id, None)
             self._call_id_map.pop(session.call_id, None)
             self._sessions.pop(session_id, None)
 
             logger.info(f"Terminated and archived telephony session {session_id} ({reason})")
             return session
+
+    def get_audio_diagnostics(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Returns audio telemetry and diagnostics for a session or latest call."""
+        if session_id and session_id in self._sessions:
+            return self._sessions[session_id].audio_telemetry.to_dict()
+        for sess in self._sessions.values():
+            if sess.state_machine.is_active:
+                return sess.audio_telemetry.to_dict()
+        if self._sessions:
+            latest_sess = list(self._sessions.values())[-1]
+            return latest_sess.audio_telemetry.to_dict()
+        if self._recent_audio_diagnostics:
+            return dict(self._recent_audio_diagnostics)
+        return AudioTelemetry().to_dict()
 
     def list_active_sessions(self) -> List[TelephonySessionInfo]:
         return [sess.to_info() for sess in self._sessions.values() if sess.state_machine.is_active]

@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import time
 from typing import Any, Dict, Optional
 import httpx
 
@@ -159,10 +160,21 @@ class ExotelTelephonyProvider:
         except Exception:
             return None
 
+        seq = (
+            raw_msg.get("sequenceNumber")
+            or raw_msg.get("sequence_number")
+            or media_data.get("chunk")
+            or sequence_number
+        )
+        try:
+            seq_int = int(seq)
+        except (ValueError, TypeError):
+            seq_int = sequence_number
+
         return AudioFrame(
             session_id=session_id,
             call_id=call_id,
-            sequence_number=raw_msg.get("sequenceNumber", sequence_number),
+            sequence_number=seq_int,
             direction=AudioDirection.INBOUND,
             codec="pcm_s16le",
             sample_rate_hz=8000,
@@ -171,12 +183,41 @@ class ExotelTelephonyProvider:
             payload_size_bytes=size_bytes,
         )
 
-    def format_outbound_media(self, stream_sid: str, pcm_bytes: bytes) -> Dict[str, Any]:
-        """Encodes raw PCM bytes into Exotel outbound media envelope."""
+    def format_outbound_media(
+        self,
+        stream_sid: str,
+        pcm_bytes: bytes,
+        chunk_index: int = 1,
+        timestamp_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Encodes raw PCM bytes into Exotel outbound media envelope conforming to Exotel VoiceBot specs."""
         b64_payload = base64.b64encode(pcm_bytes).decode("utf-8")
+        ts_str = str(timestamp_ms) if timestamp_ms is not None else str(int(time.time() * 1000))
         outbound = ExotelOutboundMediaMessage(
             event="media",
             streamSid=stream_sid,
-            media={"payload": b64_payload},
+            stream_sid=stream_sid,
+            media={
+                "chunk": str(chunk_index),
+                "timestamp": ts_str,
+                "payload": b64_payload,
+            },
         )
         return outbound.model_dump()
+
+    def format_mark_event(self, stream_sid: str, mark_name: str = "agent_speech") -> Dict[str, Any]:
+        """Formats an Exotel mark event to correlate playback completion."""
+        return {
+            "event": "mark",
+            "streamSid": stream_sid,
+            "stream_sid": stream_sid,
+            "mark": {"name": mark_name},
+        }
+
+    def format_clear_event(self, stream_sid: str) -> Dict[str, Any]:
+        """Formats an Exotel clear event to flush outbound buffer on caller interruption."""
+        return {
+            "event": "clear",
+            "streamSid": stream_sid,
+            "stream_sid": stream_sid,
+        }

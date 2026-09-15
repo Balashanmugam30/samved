@@ -31,16 +31,74 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
 
     stream_sid: Optional[str] = None
     sequence_counter = 0
+    chunk_counter = 0
+    buffer = bytearray()
 
     # Background task to stream outbound audio back to Exotel
+    # Exotel VoiceBot requirements: minimum 3200 bytes (100ms at 8kHz 16-bit mono), multiple of 320 bytes, max 100KB
+    TARGET_CHUNK_SIZE = 3200
+
     async def outbound_pump():
+        nonlocal chunk_counter
         try:
             while True:
                 pcm_chunk = await session.outbound_queue.get()
-                if stream_sid and session.websocket:
-                    outbound_msg = exotel_provider.format_outbound_media(stream_sid, pcm_chunk)
-                    await websocket.send_text(json.dumps(outbound_msg))
+                buffer.extend(pcm_chunk)
                 session.outbound_queue.task_done()
+
+                # Drain any additional chunks ready in queue without blocking
+                while not session.outbound_queue.empty():
+                    try:
+                        extra = session.outbound_queue.get_nowait()
+                        buffer.extend(extra)
+                        session.outbound_queue.task_done()
+                    except (asyncio.QueueEmpty, ValueError):
+                        break
+
+                # Send all complete TARGET_CHUNK_SIZE blocks
+                while len(buffer) >= TARGET_CHUNK_SIZE:
+                    to_send = bytes(buffer[:TARGET_CHUNK_SIZE])
+                    del buffer[:TARGET_CHUNK_SIZE]
+                    if stream_sid and session.websocket:
+                        chunk_counter += 1
+                        outbound_msg = exotel_provider.format_outbound_media(
+                            stream_sid=stream_sid,
+                            pcm_bytes=to_send,
+                            chunk_index=chunk_counter,
+                        )
+                        await websocket.send_text(json.dumps(outbound_msg))
+                        session.audio_telemetry.outbound_frames_sent_to_exotel += 1
+                        session.audio_telemetry.outbound_pcm_bytes_sent += len(to_send)
+                        session.audio_telemetry.two_way_audio_verified = True
+                        logger.info(
+                            f"MEDIA_SENT_TO_EXOTEL: session={session_id}, bytes={len(to_send)}, chunk={chunk_counter}"
+                        )
+
+                # If queue is now empty and residual buffer remains:
+                # Pad to multiple of 320 bytes and minimum 3200 bytes so Exotel accepts it
+                if session.outbound_queue.empty() and len(buffer) > 0:
+                    remainder = len(buffer) % 320
+                    if remainder > 0:
+                        buffer.extend(b"\x00" * (320 - remainder))
+                    if len(buffer) < TARGET_CHUNK_SIZE:
+                        buffer.extend(b"\x00" * (TARGET_CHUNK_SIZE - len(buffer)))
+                    to_send = bytes(buffer[:TARGET_CHUNK_SIZE])
+                    del buffer[:TARGET_CHUNK_SIZE]
+                    if stream_sid and session.websocket:
+                        chunk_counter += 1
+                        outbound_msg = exotel_provider.format_outbound_media(
+                            stream_sid=stream_sid,
+                            pcm_bytes=to_send,
+                            chunk_index=chunk_counter,
+                        )
+                        await websocket.send_text(json.dumps(outbound_msg))
+                        session.audio_telemetry.outbound_frames_sent_to_exotel += 1
+                        session.audio_telemetry.outbound_pcm_bytes_sent += len(to_send)
+                        session.audio_telemetry.two_way_audio_verified = True
+                        logger.info(
+                            f"MEDIA_SENT_TO_EXOTEL: session={session_id}, bytes={len(to_send)}, chunk={chunk_counter} (flushed/padded)"
+                        )
+
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -66,6 +124,7 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
                 start_data = msg.get("start", {})
                 stream_sid = (
                     msg.get("streamSid")
+                    or msg.get("stream_sid")
                     or start_data.get("streamSid")
                     or start_data.get("stream_sid")
                     or f"stream-{session_id}"
@@ -77,6 +136,11 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
                 logger.info(
                     f"Telephony media stream started for session {session_id} (StreamSid: {stream_sid})"
                 )
+
+                # Trigger initial safe greeting immediately upon stream start
+                if session.orchestrator:
+                    session.audio_telemetry.initial_greeting_sent = True
+                    asyncio.create_task(session.orchestrator.trigger_initial_greeting())
 
             elif event_type == ExotelMediaEvent.MEDIA.value:
                 sequence_counter += 1
@@ -95,10 +159,18 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
                 )
                 if audio_frame:
                     session.ingest_inbound_frame(audio_frame)
+                    logger.debug(
+                        f"MEDIA_RECEIVED: session={session_id}, seq={sequence_counter}, bytes={audio_frame.payload_size_bytes}"
+                    )
+
+            elif event_type == ExotelMediaEvent.MARK.value:
+                session.audio_telemetry.marks_received += 1
+                logger.info(f"MARK_RECEIVED: session={session_id}, mark={msg.get('mark', {})}")
 
             elif event_type == ExotelMediaEvent.CLEAR.value:
-                # Barge-in / interruption: cancel ongoing speech in orchestrator and drain queue
-                logger.info(f"Barge-in / clear event received for session {session_id}")
+                session.audio_telemetry.barge_in_clears_received += 1
+                logger.info(f"Barge-in / clear event received from Exotel for session {session_id}")
+                buffer.clear()
                 if session.orchestrator:
                     session.orchestrator.interrupt(reason="exotel_clear_barge_in")
                 else:
@@ -110,7 +182,7 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
                             break
 
             elif event_type == ExotelMediaEvent.STOP.value:
-                logger.info(f"Stop event received from Exotel for session {session_id}")
+                logger.info(f"CALL_STOPPED: Stop event received from Exotel for session {session_id}")
                 break
 
     except WebSocketDisconnect:

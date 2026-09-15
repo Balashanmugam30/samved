@@ -37,26 +37,30 @@ class SarvamSTTProvider:
             "api-subscription-key": self.api_key,
         }
 
+        # Sarvam saaras:v3-realtime requires language_code parameter in the WebSocket connection URL.
+        # Fallback to 'ta-IN' if unknown or not provided.
+        norm_lang = language_code if language_code and language_code != "unknown" else "ta-IN"
+        if "ta" in norm_lang.lower():
+            sarvam_lang = "ta-IN"
+        elif "hi" in norm_lang.lower():
+            sarvam_lang = "hi-IN"
+        elif "en" in norm_lang.lower():
+            sarvam_lang = "en-IN"
+        else:
+            sarvam_lang = norm_lang
+
+        connect_url = f"{self.ws_url}?language_code={sarvam_lang}&model=saaras:v3-realtime&sample_rate=8000"
+
         try:
             ws = await websockets.connect(
-                self.ws_url,
+                connect_url,
                 additional_headers=headers,
                 ping_interval=20,
                 ping_timeout=10,
             )
             self._active_connections[session_id] = ws
             self._event_queues[session_id] = asyncio.Queue()
-
-            # Send initial configuration frame
-            config_msg = {
-                "model": "saaras:v3",
-                "language_code": language_code if language_code != "unknown" else "unknown",
-                "mode": "transcribe",
-                "sample_rate": 8000,
-                "encoding": "pcm_s16le",
-            }
-            await ws.send(json.dumps(config_msg))
-            logger.info(f"Connected to Sarvam STT WebSocket for session {session_id} (lang: {language_code})")
+            logger.info(f"Connected to Sarvam STT WebSocket for session {session_id} (lang: {sarvam_lang})")
 
             # Launch background listener task
             task = asyncio.create_task(self._listen_loop(session_id, ws))
@@ -79,12 +83,27 @@ class SarvamSTTProvider:
                 except json.JSONDecodeError:
                     continue
 
+                event_type = data.get("event")
+                if event_type == "error":
+                    logger.error(f"Sarvam STT returned error for {session_id}: {data.get('message', data)}")
+                    continue
+                if event_type in ("session.begin", "session.end"):
+                    logger.info(f"Sarvam STT session lifecycle event: {event_type} for {session_id}")
+                    continue
+                if event_type == "vad.speech_start":
+                    logger.debug(f"Sarvam STT VAD speech start for {session_id}")
+                    continue
+                if event_type == "vad.speech_end":
+                    logger.debug(f"Sarvam STT VAD speech end for {session_id}")
+                    continue
+
                 text = data.get("transcript") or data.get("text") or ""
                 if not text.strip():
                     continue
 
-                is_final = bool(data.get("is_final", False))
-                lang = data.get("language_code") or "unknown"
+                # Determine if final: Sarvam realtime emits event="transcript.final" or is_final=True
+                is_final = event_type == "transcript.final" or bool(data.get("is_final", False))
+                lang = data.get("language_code") or data.get("language") or "unknown"
                 confidence = float(data.get("confidence", 0.9))
 
                 event = TranscriptEvent(
@@ -102,6 +121,13 @@ class SarvamSTTProvider:
             pass
         except Exception as e:
             logger.error(f"Error in Sarvam STT listener for {session_id}: {e}")
+
+    def is_stream_active(self, session_id: str) -> bool:
+        """Returns True if the WebSocket connection for the session is open."""
+        ws = self._active_connections.get(session_id)
+        if not ws:
+            return False
+        return not (getattr(ws, "closed", False) or getattr(ws, "close_code", None) is not None)
 
     async def send_audio_chunk(self, session_id: str, chunk_bytes: bytes) -> None:
         """Sends raw 16-bit 8000Hz PCM chunk to Sarvam STT WebSocket."""

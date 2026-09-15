@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import base64
 import logging
 from typing import Any, AsyncIterator, Dict, Optional
@@ -10,9 +10,9 @@ from app.schemas.languages import LanguageCode
 logger = logging.getLogger("samved.providers.sarvam_tts")
 
 DEFAULT_VOICES: Dict[str, str] = {
-    "ta-IN": "meera",
+    "ta-IN": "kavitha",
     "hi-IN": "shubh",
-    "en-IN": "arvind",
+    "en-IN": "priya",
 }
 
 
@@ -45,7 +45,7 @@ class SarvamTTSProvider:
     async def synthesize(
         self,
         text: str,
-        language_code: str = "en-IN",
+        language_code: str = "ta-IN",
         voice_id: Optional[str] = None,
     ) -> bytes:
         """Synthesizes text into 16-bit 8000Hz mono PCM audio bytes."""
@@ -53,11 +53,26 @@ class SarvamTTSProvider:
             logger.warning(f"Cannot synthesize TTS: configured={self.is_configured}, text_len={len(text)}")
             return b""
 
-        speaker = voice_id or DEFAULT_VOICES.get(language_code, "shubh")
+        # Normalize language and pick matching default speaker
+        norm_lang = language_code if language_code and language_code != "unknown" else "ta-IN"
+        if "ta" in norm_lang.lower():
+            target_lang = "ta-IN"
+            default_spk = "kavitha"
+        elif "hi" in norm_lang.lower():
+            target_lang = "hi-IN"
+            default_spk = "shubh"
+        elif "en" in norm_lang.lower():
+            target_lang = "en-IN"
+            default_spk = "priya"
+        else:
+            target_lang = norm_lang
+            default_spk = DEFAULT_VOICES.get(target_lang, "kavitha")
+
+        speaker = voice_id or default_spk
 
         payload = {
             "inputs": [text.strip()],
-            "target_language_code": language_code if language_code != "unknown" else "en-IN",
+            "target_language_code": target_lang,
             "speaker": speaker,
             "model": self.model,
             "audio_format": "wav",
@@ -95,7 +110,7 @@ class SarvamTTSProvider:
     async def synthesize_stream(
         self, text_iterator: AsyncIterator[str], language_code: str
     ) -> AsyncIterator[bytes]:
-        """Streams synthesized chunks in 320-byte (20ms) slices."""
+        """Streams synthesized chunks in 3200-byte slices matching Exotel requirements."""
         full_text = []
         async for chunk in text_iterator:
             full_text.append(chunk)
@@ -103,7 +118,7 @@ class SarvamTTSProvider:
         combined = " ".join(full_text).strip()
         pcm = await self.synthesize(combined, language_code=language_code)
 
-        # Slice into 320-byte (20ms) frames
-        chunk_size = 320
+        # Slice into 3200-byte frames (100ms at 8kHz 16-bit mono)
+        chunk_size = 3200
         for i in range(0, len(pcm), chunk_size):
             yield pcm[i : i + chunk_size]

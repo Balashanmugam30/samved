@@ -105,10 +105,51 @@ class ExotelWebSocketMessage(BaseModel):
     stop: Optional[Dict[str, Any]] = None
 
 
+class ExotelMarkData(BaseModel):
+    name: str = "agent_speech"
+
+
+class ExotelMarkMessage(BaseModel):
+    event: str = "mark"
+    streamSid: str
+    stream_sid: Optional[str] = None
+    mark: ExotelMarkData = Field(default_factory=ExotelMarkData)
+
+
+class ExotelClearMessage(BaseModel):
+    event: str = "clear"
+    streamSid: str
+    stream_sid: Optional[str] = None
+
+
 class ExotelOutboundMediaMessage(BaseModel):
     event: str = "media"
     streamSid: str
-    media: Dict[str, str]  # {"payload": base64_encoded_pcm}
+    stream_sid: Optional[str] = None
+    media: Dict[str, Any]  # {"payload": base64_encoded_pcm, "chunk": str, "timestamp": str}
+
+
+# Audio Telemetry and Pipeline Diagnostics
+class AudioDiagnosticsInfo(BaseModel):
+    inbound_frames_received: int = 0
+    inbound_pcm_bytes: int = 0
+    sarvam_stt_connected: bool = False
+    stt_partials_count: int = 0
+    stt_finals_count: int = 0
+    last_transcript: Optional[str] = None
+    initial_greeting_sent: bool = False
+    gemini_turns_triggered: int = 0
+    sarvam_tts_turns_triggered: int = 0
+    tts_audio_chunks_received: int = 0
+    tts_total_pcm_bytes: int = 0
+    outbound_frames_sent_to_exotel: int = 0
+    outbound_pcm_bytes_sent: int = 0
+    marks_sent: int = 0
+    marks_received: int = 0
+    barge_in_clears_sent: int = 0
+    barge_in_clears_received: int = 0
+    vad_speech_starts: int = 0
+    two_way_audio_verified: bool = False
 
 
 # Diagnostics & Telephony Session Summaries
@@ -132,6 +173,7 @@ class TelephonySessionInfo(BaseModel):
     safety_state: Optional[str] = "NONE"
     safety_signals_count: int = 0
     is_active: bool = True
+    audio_diagnostics: Optional[AudioDiagnosticsInfo] = None
 
 
 class SimulationCallRequest(BaseModel):

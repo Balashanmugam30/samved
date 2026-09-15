@@ -284,6 +284,7 @@ async def telephony_doctor() -> Dict[str, Any]:
         },
         "public_url_configured": is_public,
         "active_calls_count": telephony_session_manager.active_calls_count,
+        "audio_pipeline_diagnostics": telephony_session_manager.get_audio_diagnostics(),
         "note": "In DEV/SIMULATION mode, deterministic mocks execute the complete voice pipeline without paid API keys.",
     }
 

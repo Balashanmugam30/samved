@@ -106,9 +106,15 @@ class ConversationOrchestrator:
         raw_pcm = frame.get_raw_bytes()
 
         # Barge-in / interruption detection:
-        # If SAMVED is currently SPEAKING and caller produces speech, interrupt!
-        if self.state == ConversationState.SPEAKING:
-            if AudioStreamAdapter.is_speech_active(raw_pcm, threshold_rms=350.0):
+        if AudioStreamAdapter.is_speech_active(raw_pcm, threshold_rms=350.0):
+            try:
+                from app.realtime.session_manager import telephony_session_manager
+                asyncio.create_task(self._record_local_vad())
+            except Exception:
+                pass
+
+            # Only interrupt if SAMVED is currently actively SPEAKING (audio playback)
+            if self.state == ConversationState.SPEAKING:
                 logger.info(f"Barge-in detected via voice activity for session {self.session_id}!")
                 try:
                     from app.services.acoustic_engine import acoustic_engine
@@ -119,6 +125,34 @@ class ConversationOrchestrator:
 
         # Asynchronously forward chunk to STT provider
         asyncio.create_task(self.stt.send_audio_chunk(self.session_id, raw_pcm))
+
+    async def _record_local_vad(self) -> None:
+        try:
+            from app.realtime.session_manager import telephony_session_manager
+            sess = await telephony_session_manager.get_session(self.session_id)
+            if sess:
+                sess.audio_telemetry.local_vad_speech_starts += 1
+                sess.audio_telemetry.vad_speech_starts += 1
+        except Exception:
+            pass
+
+    async def _record_stt_telemetry(self, event: TranscriptEvent) -> None:
+        try:
+            from app.realtime.session_manager import telephony_session_manager
+            sess = await telephony_session_manager.get_session(self.session_id)
+            if sess:
+                sess.audio_telemetry.sarvam_stt_connected = True
+                if not event.is_final:
+                    sess.audio_telemetry.stt_partials_count += 1
+                else:
+                    sess.audio_telemetry.stt_finals_count += 1
+                    sess.audio_telemetry.last_transcript = event.text
+                    if event.text and event.text.strip():
+                        sess.audio_telemetry.real_stt_transcript_seen = True
+        except Exception:
+            pass
+
+
 
     def interrupt(self, reason: str = "barge_in") -> None:
         """Interrupts ongoing AI speech immediately, clears outbound buffer, and listens."""
@@ -167,6 +201,11 @@ class ConversationOrchestrator:
             if self.state == ConversationState.LISTENING:
                 self.transition_state(ConversationState.TRANSCRIBING, reason="partial_transcript")
             logger.info(f"STT_PARTIAL: session={self.session_id}, text='{event.text}'")
+            try:
+                from app.realtime.session_manager import telephony_session_manager
+                asyncio.create_task(self._record_stt_telemetry(event))
+            except Exception:
+                pass
             self.broadcast(
                 "TRANSCRIPT_PARTIAL",
                 {
@@ -182,8 +221,14 @@ class ConversationOrchestrator:
 
         # 3. Handle final transcript (Turn boundary reached)
         logger.info(f"STT_FINAL: session={self.session_id}, text='{event.text}', confidence={event.confidence}")
+        try:
+            from app.realtime.session_manager import telephony_session_manager
+            asyncio.create_task(self._record_stt_telemetry(event))
+        except Exception:
+            pass
         self.active_latency.caller_speech_ended_at = time.time()
         self.active_latency.final_transcript_at = time.time()
+
 
         utterance = Utterance(
             speaker=TurnSpeaker.CALLER,
@@ -577,8 +622,8 @@ class ConversationOrchestrator:
                 },
             )
 
-            # 2. Transition to SPEAKING and synthesize TTS
-            self.transition_state(ConversationState.SPEAKING, reason="tts_synthesis_started")
+            # 2. DO NOT transition to SPEAKING yet! Keep state in THINKING during TTS synthesis
+            # to prevent premature barge-in interruption from caller microphone noise.
             logger.info(f"TTS_STARTED: session={self.session_id}, text_len={len(response.response_text)}, lang={response.language}")
             self.broadcast(
                 "TTS_STARTED",
@@ -589,18 +634,37 @@ class ConversationOrchestrator:
                 text=response.response_text,
                 language_code=response.language,
             )
-            logger.info(f"TTS_COMPLETED: session={self.session_id}, pcm_bytes={len(pcm_audio) if pcm_audio else 0}")
 
-            if pcm_audio:
-                self.active_latency.first_tts_frame_at = time.time()
-                # Slice into 320-byte (20ms) frames
-                frames = AudioStreamAdapter.slice_pcm_to_frames(pcm_audio)
-                for chunk in frames:
-                    # Cooperative check: if interrupted, break early
-                    if self.state != ConversationState.SPEAKING:
-                        logger.info(f"Playback aborted due to state change ({self.state})")
-                        break
-                    await self.outbound_queue.put(chunk)
+            if not pcm_audio or len(pcm_audio) == 0:
+                logger.error(
+                    f"TTS_FAILED: session={self.session_id}, reason='provider_returned_zero_audio', text_len={len(response.response_text)}"
+                )
+                self.broadcast("TTS_FAILED", {"session_id": self.session_id, "call_id": self.call_id, "reason": "provider_returned_zero_audio"})
+                self.transition_state(ConversationState.LISTENING, reason="tts_returned_zero_audio")
+                return
+
+            logger.info(f"TTS_COMPLETED: session={self.session_id}, pcm_bytes={len(pcm_audio)}")
+            try:
+                from app.realtime.session_manager import telephony_session_manager
+                sess = await telephony_session_manager.get_session(self.session_id)
+                if sess:
+                    sess.audio_telemetry.sarvam_tts_turns_triggered += 1
+                    sess.audio_telemetry.tts_audio_chunks_received += 1
+                    sess.audio_telemetry.tts_total_pcm_bytes += len(pcm_audio)
+                    sess.audio_telemetry.real_tts_succeeded = True
+                    sess.audio_telemetry.update_two_way_verification()
+            except Exception:
+                pass
+
+            # NOW transition to SPEAKING because we have actual audio to stream
+            self.transition_state(ConversationState.SPEAKING, reason="tts_playback_started")
+            self.active_latency.first_tts_frame_at = time.time()
+            frames = AudioStreamAdapter.slice_pcm_to_frames(pcm_audio)
+            for chunk in frames:
+                if self.state != ConversationState.SPEAKING:
+                    logger.info(f"Playback aborted due to state change ({self.state})")
+                    break
+                await self.outbound_queue.put(chunk)
 
             self.broadcast("TTS_ENDED", {"session_id": self.session_id, "call_id": self.call_id})
             self.broadcast(
@@ -639,7 +703,7 @@ class ConversationOrchestrator:
         greeting_text = INITIAL_GREETINGS.get(lang_val, INITIAL_GREETINGS["ta-IN"])
 
         logger.info(f"Triggering initial greeting for session {self.session_id} (lang: {lang_val})")
-        self.transition_state(ConversationState.SPEAKING, reason="initial_greeting_started")
+        # Keep state in LISTENING during synthesis to prevent premature barge-in
         self.broadcast(
             "INITIAL_GREETING_STARTED",
             {
@@ -656,15 +720,36 @@ class ConversationOrchestrator:
                 text=greeting_text,
                 language_code=lang_val,
             )
-            logger.info(f"TTS_COMPLETED: session={self.session_id}, initial_greeting=True, pcm_bytes={len(pcm_audio) if pcm_audio else 0}")
 
-            if pcm_audio:
-                frames = AudioStreamAdapter.slice_pcm_to_frames(pcm_audio)
-                for chunk in frames:
-                    if self.state != ConversationState.SPEAKING:
-                        logger.info(f"Initial greeting playback interrupted ({self.state})")
-                        break
-                    await self.outbound_queue.put(chunk)
+            if not pcm_audio or len(pcm_audio) == 0:
+                logger.error(
+                    f"TTS_FAILED: session={self.session_id}, initial_greeting=True, reason='provider_returned_zero_audio'"
+                )
+                self.transition_state(ConversationState.LISTENING, reason="initial_greeting_tts_failed")
+                return
+
+            logger.info(f"TTS_COMPLETED: session={self.session_id}, initial_greeting=True, pcm_bytes={len(pcm_audio)}")
+            try:
+                from app.realtime.session_manager import telephony_session_manager
+                sess = await telephony_session_manager.get_session(self.session_id)
+                if sess:
+                    sess.audio_telemetry.sarvam_tts_turns_triggered += 1
+                    sess.audio_telemetry.tts_audio_chunks_received += 1
+                    sess.audio_telemetry.tts_total_pcm_bytes += len(pcm_audio)
+                    sess.audio_telemetry.real_tts_succeeded = True
+                    sess.audio_telemetry.update_two_way_verification()
+            except Exception:
+                pass
+
+            # NOW transition to SPEAKING for playback
+            self.transition_state(ConversationState.SPEAKING, reason="initial_greeting_playback")
+
+            frames = AudioStreamAdapter.slice_pcm_to_frames(pcm_audio)
+            for chunk in frames:
+                if self.state != ConversationState.SPEAKING:
+                    logger.info(f"Initial greeting playback interrupted ({self.state})")
+                    break
+                await self.outbound_queue.put(chunk)
 
             self.broadcast(
                 "INITIAL_GREETING_ENDED",
@@ -678,6 +763,7 @@ class ConversationOrchestrator:
         finally:
             if self.state == ConversationState.SPEAKING:
                 self.transition_state(ConversationState.LISTENING, reason="initial_greeting_completed")
+
 
     async def start(self) -> None:
         """Starts background STT receiver task."""

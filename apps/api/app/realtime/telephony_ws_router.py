@@ -69,10 +69,12 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
                         await websocket.send_text(json.dumps(outbound_msg))
                         session.audio_telemetry.outbound_frames_sent_to_exotel += 1
                         session.audio_telemetry.outbound_pcm_bytes_sent += len(to_send)
-                        session.audio_telemetry.two_way_audio_verified = True
+                        session.audio_telemetry.real_outbound_media_sent = True
+                        session.audio_telemetry.update_two_way_verification()
                         logger.info(
                             f"MEDIA_SENT_TO_EXOTEL: session={session_id}, bytes={len(to_send)}, chunk={chunk_counter}"
                         )
+                        await asyncio.sleep(0.100)
 
                 # If queue is now empty and residual buffer remains:
                 # Pad to multiple of 320 bytes and minimum 3200 bytes so Exotel accepts it
@@ -94,10 +96,20 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
                         await websocket.send_text(json.dumps(outbound_msg))
                         session.audio_telemetry.outbound_frames_sent_to_exotel += 1
                         session.audio_telemetry.outbound_pcm_bytes_sent += len(to_send)
-                        session.audio_telemetry.two_way_audio_verified = True
+                        session.audio_telemetry.real_outbound_media_sent = True
+                        session.audio_telemetry.update_two_way_verification()
                         logger.info(
                             f"MEDIA_SENT_TO_EXOTEL: session={session_id}, bytes={len(to_send)}, chunk={chunk_counter} (flushed/padded)"
                         )
+                        await asyncio.sleep(0.100)
+
+                # Send mark event when turn audio queue finishes
+                if session.outbound_queue.empty() and len(buffer) == 0 and stream_sid and chunk_counter > 0:
+                    mark_name = f"turn_{chunk_counter}"
+                    mark_msg = exotel_provider.format_mark_event(stream_sid, mark_name=mark_name)
+                    await websocket.send_text(json.dumps(mark_msg))
+                    session.audio_telemetry.marks_sent += 1
+                    logger.info(f"MARK_SENT: session={session_id}, mark={mark_name}")
 
         except asyncio.CancelledError:
             pass
@@ -159,13 +171,15 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
                 )
                 if audio_frame:
                     session.ingest_inbound_frame(audio_frame)
-                    logger.debug(
-                        f"MEDIA_RECEIVED: session={session_id}, seq={sequence_counter}, bytes={audio_frame.payload_size_bytes}"
+                    logger.info(
+                        f"MEDIA_RECEIVED: session={session_id}, seq={audio_frame.sequence_number}, bytes={audio_frame.payload_size_bytes}"
                     )
 
             elif event_type == ExotelMediaEvent.MARK.value:
                 session.audio_telemetry.marks_received += 1
+                session.audio_telemetry.real_mark_received = True
                 logger.info(f"MARK_RECEIVED: session={session_id}, mark={msg.get('mark', {})}")
+
 
             elif event_type == ExotelMediaEvent.CLEAR.value:
                 session.audio_telemetry.barge_in_clears_received += 1

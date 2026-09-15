@@ -149,7 +149,26 @@ class AudioDiagnosticsInfo(BaseModel):
     barge_in_clears_sent: int = 0
     barge_in_clears_received: int = 0
     vad_speech_starts: int = 0
+    local_vad_speech_starts: int = 0
+    sarvam_vad_speech_starts: int = 0
+    first_media_time: Optional[str] = None
+    last_media_time: Optional[str] = None
+    first_sequence_number: Optional[int] = None
+    last_sequence_number: Optional[int] = None
+    media_duration_seconds: float = 0.0
+
+    # 9 Boolean Diagnostic Flags
+    resolver_ready: bool = True
+    wss_ready: bool = True
+    real_pstn_session_seen: bool = False
+    real_inbound_media_seen: bool = False
+    real_stt_transcript_seen: bool = False
+    real_tts_succeeded: bool = False
+    real_outbound_media_sent: bool = False
+    real_mark_received: bool = False
+    real_two_way_audio_verified: bool = False
     two_way_audio_verified: bool = False
+
 
 
 # Diagnostics & Telephony Session Summaries

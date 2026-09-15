@@ -41,9 +41,37 @@ class AudioTelemetry:
         self.barge_in_clears_sent: int = 0
         self.barge_in_clears_received: int = 0
         self.vad_speech_starts: int = 0
+        self.local_vad_speech_starts: int = 0
+        self.sarvam_vad_speech_starts: int = 0
+        self.first_media_time: Optional[str] = None
+        self.last_media_time: Optional[str] = None
+        self.first_sequence_number: Optional[int] = None
+        self.last_sequence_number: Optional[int] = None
+        self.media_duration_seconds: float = 0.0
+
+        # 9 Boolean Diagnostic Flags
+        self.resolver_ready: bool = True
+        self.wss_ready: bool = True
+        self.real_pstn_session_seen: bool = False
+        self.real_inbound_media_seen: bool = False
+        self.real_stt_transcript_seen: bool = False
+        self.real_tts_succeeded: bool = False
+        self.real_outbound_media_sent: bool = False
+        self.real_mark_received: bool = False
+        self.real_two_way_audio_verified: bool = False
         self.two_way_audio_verified: bool = False
 
+    def update_two_way_verification(self) -> bool:
+        self.real_two_way_audio_verified = bool(
+            self.real_inbound_media_seen
+            and self.real_outbound_media_sent
+            and self.real_tts_succeeded
+        )
+        self.two_way_audio_verified = self.real_two_way_audio_verified
+        return self.real_two_way_audio_verified
+
     def to_info(self) -> AudioDiagnosticsInfo:
+        self.update_two_way_verification()
         return AudioDiagnosticsInfo(
             inbound_frames_received=self.inbound_frames_received,
             inbound_pcm_bytes=self.inbound_pcm_bytes,
@@ -63,11 +91,28 @@ class AudioTelemetry:
             barge_in_clears_sent=self.barge_in_clears_sent,
             barge_in_clears_received=self.barge_in_clears_received,
             vad_speech_starts=self.vad_speech_starts,
+            local_vad_speech_starts=self.local_vad_speech_starts,
+            sarvam_vad_speech_starts=self.sarvam_vad_speech_starts,
+            first_media_time=self.first_media_time,
+            last_media_time=self.last_media_time,
+            first_sequence_number=self.first_sequence_number,
+            last_sequence_number=self.last_sequence_number,
+            media_duration_seconds=self.media_duration_seconds,
+            resolver_ready=self.resolver_ready,
+            wss_ready=self.wss_ready,
+            real_pstn_session_seen=self.real_pstn_session_seen,
+            real_inbound_media_seen=self.real_inbound_media_seen,
+            real_stt_transcript_seen=self.real_stt_transcript_seen,
+            real_tts_succeeded=self.real_tts_succeeded,
+            real_outbound_media_sent=self.real_outbound_media_sent,
+            real_mark_received=self.real_mark_received,
+            real_two_way_audio_verified=self.real_two_way_audio_verified,
             two_way_audio_verified=self.two_way_audio_verified,
         )
 
     def to_dict(self) -> Dict[str, Any]:
         return self.to_info().model_dump()
+
 
 
 def mask_phone_number(raw_number: str) -> str:
@@ -155,6 +200,9 @@ class TelephonySession:
 
         # Audio pipeline diagnostics and telemetry
         self.audio_telemetry = AudioTelemetry()
+        if self.provider == "exotel" and not self.session_id.startswith("SIM-") and not self.session_id.startswith("MOCK-"):
+            self.audio_telemetry.real_pstn_session_seen = True
+
 
         # Subscribed callbacks for downstream consumers
         self.frame_consumers: Set[Any] = set()
@@ -397,11 +445,23 @@ class TelephonySession:
         self.inbound_bytes_count += frame.payload_size_bytes
 
         # Update real-time audio pipeline telemetry
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if self.audio_telemetry.first_media_time is None:
+            self.audio_telemetry.first_media_time = now_iso
+            self.audio_telemetry.first_sequence_number = frame.sequence_number
+        self.audio_telemetry.last_media_time = now_iso
+        self.audio_telemetry.last_sequence_number = frame.sequence_number
+
         self.audio_telemetry.inbound_frames_received += 1
         self.audio_telemetry.inbound_pcm_bytes += frame.payload_size_bytes
+        if frame.payload_size_bytes > 0:
+            self.audio_telemetry.real_inbound_media_seen = True
+        self.audio_telemetry.media_duration_seconds = round(self.audio_telemetry.inbound_frames_received * 0.020, 3)
+        self.audio_telemetry.update_two_way_verification()
 
         if len(self.inbound_buffer) == self.inbound_buffer.maxlen:
             self.dropped_frames_count += 1
+
 
         self.inbound_buffer.append(frame)
 
@@ -657,15 +717,23 @@ class RealtimeSessionManager:
         """Returns audio telemetry and diagnostics for a session or latest call."""
         if session_id and session_id in self._sessions:
             return self._sessions[session_id].audio_telemetry.to_dict()
-        for sess in self._sessions.values():
-            if sess.state_machine.is_active:
+        # Look for active streaming session (most recent first)
+        for sess in reversed(list(self._sessions.values())):
+            if sess.state_machine.is_streaming:
                 return sess.audio_telemetry.to_dict()
-        if self._sessions:
-            latest_sess = list(self._sessions.values())[-1]
-            return latest_sess.audio_telemetry.to_dict()
+        # Look for any active session with media activity (most recent first)
+        for sess in reversed(list(self._sessions.values())):
+            if sess.audio_telemetry.inbound_frames_received > 0 or sess.audio_telemetry.outbound_frames_sent_to_exotel > 0:
+                return sess.audio_telemetry.to_dict()
+        # If a completed call has telemetry, prefer it over an idle uninitiated session
         if self._recent_audio_diagnostics:
             return dict(self._recent_audio_diagnostics)
+        # Fallback to most recent active session or empty telemetry
+        for sess in reversed(list(self._sessions.values())):
+            if sess.state_machine.is_active:
+                return sess.audio_telemetry.to_dict()
         return AudioTelemetry().to_dict()
+
 
     def list_active_sessions(self) -> List[TelephonySessionInfo]:
         return [sess.to_info() for sess in self._sessions.values() if sess.state_machine.is_active]

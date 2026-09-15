@@ -150,7 +150,7 @@ class ExotelTelephonyProvider:
             return None
 
         media_data = raw_msg.get("media", {})
-        payload_b64 = media_data.get("payload") or media_data.get("chunk") or ""
+        payload_b64 = media_data.get("payload") or ""
         if not payload_b64:
             return None
 
@@ -193,24 +193,22 @@ class ExotelTelephonyProvider:
         """Encodes raw PCM bytes into Exotel outbound media envelope conforming to Exotel VoiceBot specs."""
         b64_payload = base64.b64encode(pcm_bytes).decode("utf-8")
         ts_str = str(timestamp_ms) if timestamp_ms is not None else str(int(time.time() * 1000))
-        outbound = ExotelOutboundMediaMessage(
-            event="media",
-            streamSid=stream_sid,
-            stream_sid=stream_sid,
-            media={
+        return {
+            "event": "media",
+            "streamSid": stream_sid,
+            "stream_sid": stream_sid,
+            "media": {
                 "chunk": str(chunk_index),
                 "timestamp": ts_str,
                 "payload": b64_payload,
             },
-        )
-        return outbound.model_dump()
+        }
 
     def format_mark_event(self, stream_sid: str, mark_name: str = "agent_speech") -> Dict[str, Any]:
         """Formats an Exotel mark event to correlate playback completion."""
         return {
             "event": "mark",
             "streamSid": stream_sid,
-            "stream_sid": stream_sid,
             "mark": {"name": mark_name},
         }
 
@@ -219,5 +217,5 @@ class ExotelTelephonyProvider:
         return {
             "event": "clear",
             "streamSid": stream_sid,
-            "stream_sid": stream_sid,
         }
+

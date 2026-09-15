@@ -117,31 +117,41 @@ async def test_sarvam_tts_slicing():
 
 
 # 7. Exotel normalize media with camelCase and snake_case
+# 7. Exotel normalize media with payload requirement
 def test_exotel_normalize_media_camel_and_snake():
     provider = ExotelTelephonyProvider()
     dummy_b64 = base64.b64encode(b"\x00" * 320).decode("utf-8")
 
-    # CamelCase event
+    # Valid event with payload
     msg_camel = {
         "event": "media",
         "sequenceNumber": 10,
-        "media": {"payload": dummy_b64},
+        "media": {"payload": dummy_b64, "chunk": "10"},
     }
     frame1 = provider.normalize_media_event(msg_camel, "s1", "c1", 1)
     assert frame1 is not None
     assert frame1.sequence_number == 10
     assert frame1.payload_size_bytes == 320
 
-    # Snake_case event
+    # Snake_case sequence_number
     msg_snake = {
         "event": "media",
         "sequence_number": 11,
-        "media": {"chunk": dummy_b64},
+        "media": {"payload": dummy_b64},
     }
     frame2 = provider.normalize_media_event(msg_snake, "s1", "c1", 1)
     assert frame2 is not None
     assert frame2.sequence_number == 11
     assert frame2.payload_size_bytes == 320
+
+    # Message with only chunk but no payload should be rejected (returns None)
+    msg_no_payload = {
+        "event": "media",
+        "sequenceNumber": 12,
+        "media": {"chunk": "12"},
+    }
+    frame3 = provider.normalize_media_event(msg_no_payload, "s1", "c1", 1)
+    assert frame3 is None
 
 
 # 8. Exotel outbound media formatting conforming to specs
@@ -176,16 +186,52 @@ def test_exotel_format_mark_and_clear():
     assert clear["streamSid"] == "stream-123"
 
 
-# 10. Outbound pump audio aggregation (>=3200B and multiple of 320)
+# 10. Outbound pump audio aggregation (>=3200B and multiple of 320) & 9 Boolean diagnostic flags
 def test_audio_telemetry_counters():
     telemetry = AudioTelemetry()
     assert telemetry.inbound_frames_received == 0
     assert telemetry.outbound_frames_sent_to_exotel == 0
     assert telemetry.two_way_audio_verified is False
 
+    # Check the 9 boolean diagnostic flags
+    assert telemetry.resolver_ready is True
+    assert telemetry.wss_ready is True
+    assert telemetry.real_pstn_session_seen is False
+    assert telemetry.real_inbound_media_seen is False
+    assert telemetry.real_stt_transcript_seen is False
+    assert telemetry.real_tts_succeeded is False
+    assert telemetry.real_outbound_media_sent is False
+    assert telemetry.real_mark_received is False
+    assert telemetry.real_two_way_audio_verified is False
+
+    # Verify update_two_way_verification requirement:
+    # Requires real_inbound_media_seen AND real_outbound_media_sent AND real_tts_succeeded
+    telemetry.real_outbound_media_sent = True
+    assert telemetry.update_two_way_verification() is False
+
+    telemetry.real_inbound_media_seen = True
+    assert telemetry.update_two_way_verification() is False
+
+    telemetry.real_tts_succeeded = True
+    assert telemetry.update_two_way_verification() is True
+    assert telemetry.two_way_audio_verified is True
+
     info: AudioDiagnosticsInfo = telemetry.to_info()
-    assert info.inbound_frames_received == 0
-    assert info.two_way_audio_verified is False
+    assert info.two_way_audio_verified is True
+    assert info.real_two_way_audio_verified is True
+
+
+# 10b. Pure-Python linear resampler (22050Hz to 8000Hz)
+def test_sarvam_tts_pcm_resampler():
+    from app.providers.sarvam_tts import resample_pcm
+
+    # 1 second of 22050 Hz 16-bit mono PCM = 22050 samples = 44100 bytes
+    in_samples = 22050
+    fake_pcm_22k = b"\x00\x01" * in_samples
+    resampled_8k = resample_pcm(fake_pcm_22k, in_rate=22050, out_rate=8000)
+
+    # Expected out samples = 8000 -> 16000 bytes
+    assert len(resampled_8k) == 16000
 
 
 # 11. Initial safe greeting exists for Tamil, Hindi, and English
@@ -193,6 +239,7 @@ def test_conversation_orchestrator_initial_greeting_texts():
     assert "SAMVED" in INITIAL_GREETINGS["ta-IN"]
     assert "SAMVED" in INITIAL_GREETINGS["hi-IN"]
     assert "SAMVED" in INITIAL_GREETINGS["en-IN"]
+
     assert "வணக்கம்" in INITIAL_GREETINGS["ta-IN"]
     assert "नमस्ते" in INITIAL_GREETINGS["hi-IN"]
     assert "Hello" in INITIAL_GREETINGS["en-IN"]

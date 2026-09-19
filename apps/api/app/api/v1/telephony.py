@@ -44,6 +44,15 @@ async def _provision_or_get_inbound_session(
 
     # 1. Idempotency check: reuse existing session if this call was retried
     existing_session = await telephony_session_manager.get_by_provider_call_id(call_sid)
+    if not existing_session:
+        try:
+            from app.core.redis import get_session_id_by_provider_call
+            redis_sid = await get_session_id_by_provider_call(call_sid)
+            if redis_sid:
+                existing_session = await telephony_session_manager.hydrate_session_from_redis(redis_sid)
+        except Exception as e:
+            logger.debug(f"Redis provider call lookup error: {e}")
+
     if existing_session:
         logger.info(f"Duplicate inbound call for CallSid {call_sid}; returning existing stream.")
         ws_url = f"{stream_base.rstrip('/')}/{existing_session.session_id}"

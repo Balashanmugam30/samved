@@ -22,6 +22,10 @@ async def exotel_telephony_websocket(websocket: WebSocket, session_id: str):
 
     session = await telephony_session_manager.get_session(session_id)
     if not session:
+        # Cross-instance fallback: attempt hydration from Redis
+        session = await telephony_session_manager.hydrate_session_from_redis(session_id)
+
+    if not session:
         logger.warning(f"Rejecting telephony WebSocket connection: unknown session_id {session_id}")
         await websocket.close(code=4004, reason="Session not found")
         return

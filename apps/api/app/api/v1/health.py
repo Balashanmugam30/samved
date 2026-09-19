@@ -60,16 +60,26 @@ async def readiness_probe() -> JSONResponse:
     from app.realtime.session_manager import telephony_session_manager
 
     # 1. Dependency Inspections
+    redis_live = False
+    if settings.REDIS_URL:
+        try:
+            from app.core.redis import is_redis_available
+            redis_live = await is_redis_available()
+        except Exception:
+            redis_live = False
+
+    redis_status = "connected" if redis_live else ("unreachable" if settings.REDIS_URL else "unconfigured_local")
+
     dependencies: Dict[str, Dict[str, Any]] = {
         "database": {
-            "status": "connected" if settings.DATABASE_URL else "unconfigured_local",
+            "status": "configured" if settings.DATABASE_URL else "unconfigured_local",
             "required_for_mode": False if settings.is_dev() else True,
             "details": "PostgreSQL connection configured" if settings.DATABASE_URL else "Running in DEV mode with in-memory store",
         },
         "redis": {
-            "status": "connected" if settings.REDIS_URL else "unconfigured_local",
+            "status": redis_status,
             "required_for_mode": False if settings.is_dev() else True,
-            "details": "Redis URL configured" if settings.REDIS_URL else "Running in DEV mode with in-memory session manager",
+            "details": "Redis connected and responsive" if redis_live else ("Redis configured but unreachable" if settings.REDIS_URL else "Running in DEV mode with in-memory session manager"),
         },
         "telephony": {
             "status": "mock_ready" if settings.is_dev() else ("configured" if settings.has_exotel_credentials() else "missing_credentials"),

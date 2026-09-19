@@ -82,7 +82,7 @@ async def operator_websocket_endpoint(
                 continue
 
             # Inbound rate limit: 10 msgs / sec
-            rl_res = rate_limiter.check(f"ws_msg:{client_uid}", limit=10, window_seconds=1)
+            rl_res = await rate_limiter.check_async(f"ws_msg:{client_uid}", limit=10, window_seconds=1)
             if not rl_res.allowed:
                 err_env = EventEnvelope(
                     event_type=EventType.SECURITY_RATE_LIMITED,

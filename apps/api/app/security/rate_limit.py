@@ -98,6 +98,45 @@ class RateLimiter:
                 client_ip=client_ip,
             )
 
+    async def check_async(
+        self,
+        key: str,
+        limit: int = 60,
+        window_seconds: int = 60,
+        burst_allowance: int = 0,
+        client_ip: Optional[str] = None,
+    ) -> RateLimitResult:
+        """Asynchronously checks quota, using Redis when available with in-memory fallback."""
+        try:
+            from app.core.redis import check_rate_limit_redis
+            redis_res = await check_rate_limit_redis(
+                key=key,
+                limit=limit,
+                window_seconds=window_seconds,
+                burst_allowance=burst_allowance,
+            )
+            if redis_res is not None:
+                allowed, current_count, retry_after = redis_res
+                return RateLimitResult(
+                    allowed=allowed,
+                    current_count=current_count,
+                    limit=limit,
+                    window_seconds=window_seconds,
+                    retry_after_seconds=retry_after,
+                    client_ip=client_ip,
+                )
+        except Exception:
+            pass
+
+        # Fallback to local thread-safe sliding window
+        return self.check(
+            key=key,
+            limit=limit,
+            window_seconds=window_seconds,
+            burst_allowance=burst_allowance,
+            client_ip=client_ip,
+        )
+
     def record_abuse_strike(self, key: str, strikes: int = 1) -> None:
         """Explicitly increment strikes (e.g. malformed payloads, injection attempts)."""
         now = time.time()
@@ -142,6 +181,30 @@ def enforce_rate_limit(
 ) -> RateLimitResult:
     """Enforce rate limit; raises HTTP 429 Too Many Requests if quota is exceeded."""
     res = _global_limiter.check(
+        key=key,
+        limit=limit,
+        window_seconds=window_seconds,
+        burst_allowance=burst_allowance,
+        client_ip=client_ip,
+    )
+    if not res.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded: quota is {res.limit} requests per {res.window_seconds}s. Try again in {res.retry_after_seconds}s.",
+            headers={"Retry-After": str(int(res.retry_after_seconds) + 1)},
+        )
+    return res
+
+
+async def enforce_rate_limit_async(
+    key: str,
+    limit: int = 60,
+    window_seconds: int = 60,
+    burst_allowance: int = 0,
+    client_ip: Optional[str] = None,
+) -> RateLimitResult:
+    """Asynchronously enforce rate limit using Redis with in-memory fallback."""
+    res = await _global_limiter.check_async(
         key=key,
         limit=limit,
         window_seconds=window_seconds,

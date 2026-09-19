@@ -43,9 +43,29 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Demo pre-seeding deferred: {e}")
 
+    # Start Redis operator pub/sub listener if Redis is configured
+    if settings.REDIS_URL:
+        try:
+            from app.realtime.connection_manager import manager
+            manager.start_redis_listener()
+        except Exception as e:
+            logger.debug(f"Redis listener initialization deferred: {e}")
+
     yield
 
     logger.info(f"Shutting down {settings.APP_NAME}")
+    try:
+        from app.realtime.connection_manager import manager
+        await manager.stop_redis_listener()
+    except Exception as e:
+        logger.debug(f"Error stopping Redis listener: {e}")
+
+    try:
+        from app.core.redis import close_redis_client
+        await close_redis_client()
+    except Exception as e:
+        logger.debug(f"Error closing Redis client: {e}")
+
     try:
         from app.core.shutdown import get_shutdown_manager
         await get_shutdown_manager().execute_shutdown()

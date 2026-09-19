@@ -629,7 +629,76 @@ class RealtimeSessionManager:
             logger.info(
                 f"Created telephony session {session_id} for call {call_id} (Provider SID: {provider_call_id})"
             )
+
+            # Asynchronously persist session envelope to Redis for cross-instance access
+            try:
+                from app.core.redis import save_session_envelope
+                envelope = {
+                    "session_id": session_id,
+                    "call_id": call_id,
+                    "provider_call_id": provider_call_id,
+                    "caller_number": caller_number,
+                    "masked_caller_number": session.masked_caller_number,
+                    "provider": provider,
+                    "created_at": session.created_at,
+                    "mode": settings.APP_MODE,
+                    "state": session.state_machine.current_state.value,
+                    "primary_language": session.orchestrator.current_language.value if session.orchestrator else "ta-IN",
+                }
+                asyncio.create_task(save_session_envelope(session_id, envelope))
+            except Exception as e:
+                logger.debug(f"Could not persist session envelope to Redis: {e}")
+
             return session
+
+    async def hydrate_session_from_redis(self, session_id: str) -> Optional[TelephonySession]:
+        """Hydrates a TelephonySession into local memory from Redis if present."""
+        async with self._lock:
+            if session_id in self._sessions:
+                return self._sessions[session_id]
+
+            try:
+                from app.core.redis import load_session_envelope
+                envelope = await load_session_envelope(session_id)
+                if not envelope:
+                    return None
+
+                call_id = envelope.get("call_id", f"CALL-{session_id}")
+                provider_call_id = envelope.get("provider_call_id", f"PROV-{session_id}")
+                caller_number = envelope.get("caller_number", "ANONYMOUS")
+                provider = envelope.get("provider", "exotel")
+
+                session = TelephonySession(
+                    session_id=session_id,
+                    call_id=call_id,
+                    provider_call_id=provider_call_id,
+                    caller_number=caller_number,
+                    provider=provider,
+                )
+
+                orchestrator = create_session_orchestrator(session)
+                session.orchestrator = orchestrator
+                await orchestrator.start()
+
+                # Restore state machine to at least CONNECTING if it was CONNECTING/RINGING
+                prev_state = envelope.get("state")
+                if prev_state and prev_state in [s.value for s in CallState]:
+                    try:
+                        target_state = CallState(prev_state)
+                        if session.state_machine.can_transition_to(target_state):
+                            session.state_machine.transition_to(target_state, reason="hydrated_from_redis")
+                    except Exception:
+                        pass
+
+                self._sessions[session_id] = session
+                self._provider_call_id_map[provider_call_id] = session_id
+                self._call_id_map[call_id] = session_id
+
+                logger.info(f"Successfully hydrated session {session_id} from Redis into local memory.")
+                return session
+            except Exception as exc:
+                logger.warning(f"Error hydrating session {session_id} from Redis: {exc}")
+                return None
 
     async def get_session(self, session_id: str) -> Optional[TelephonySession]:
         return self._sessions.get(session_id)
@@ -709,6 +778,13 @@ class RealtimeSessionManager:
             self._provider_call_id_map.pop(session.provider_call_id, None)
             self._call_id_map.pop(session.call_id, None)
             self._sessions.pop(session_id, None)
+
+            # 7. Asynchronously remove active session envelope from Redis
+            try:
+                from app.core.redis import delete_session_envelope
+                asyncio.create_task(delete_session_envelope(session_id, session.provider_call_id))
+            except Exception:
+                pass
 
             logger.info(f"Terminated and archived telephony session {session_id} ({reason})")
             return session

@@ -88,12 +88,12 @@ async def readiness_probe() -> JSONResponse:
             "active_calls": telephony_session_manager.active_calls_count,
         },
         "speech": {
-            "status": "mock_ready" if settings.is_dev() else ("configured" if settings.SARVAM_API_KEY else "missing_credentials"),
-            "provider": "MockSTT/TTS" if settings.is_dev() else "Sarvam",
+            "status": "configured" if ((settings.REAL_PROVIDER_SIMULATION or settings.is_live()) and settings.SARVAM_API_KEY) else ("mock_ready" if settings.is_dev() else "missing_credentials"),
+            "provider": "Sarvam" if ((settings.REAL_PROVIDER_SIMULATION and settings.SARVAM_API_KEY) or settings.is_live()) else "MockSTT/TTS",
         },
         "llm": {
-            "status": "mock_ready" if settings.is_dev() else ("configured" if settings.GEMINI_API_KEY else "missing_credentials"),
-            "provider": "MockLLM" if settings.is_dev() else "Gemini",
+            "status": "configured" if ((settings.REAL_PROVIDER_SIMULATION or settings.is_live()) and settings.GEMINI_API_KEY) else ("mock_ready" if settings.is_dev() else "missing_credentials"),
+            "provider": "Gemini" if ((settings.REAL_PROVIDER_SIMULATION and settings.GEMINI_API_KEY) or settings.is_live()) else "MockLLM",
         },
         "safety_engine": {
             "status": "operational",

@@ -536,17 +536,26 @@ def create_session_orchestrator(session: TelephonySession) -> ConversationOrches
     from app.realtime.connection_manager import manager
     from app.schemas.events import EventEnvelope, EventType
 
-    # Use live providers only if in LIVE mode with credentials
-    if settings.is_live() and settings.SARVAM_API_KEY and settings.GEMINI_API_KEY:
+    # Use real providers if in LIVE mode or REAL_PROVIDER_SIMULATION is enabled, with required credentials
+    real_provider_mode = bool(settings.is_live() or settings.REAL_PROVIDER_SIMULATION)
+    has_credentials = bool(settings.SARVAM_API_KEY and str(settings.SARVAM_API_KEY).strip()) and bool(settings.GEMINI_API_KEY and str(settings.GEMINI_API_KEY).strip())
+
+    if real_provider_mode and has_credentials:
         stt = SarvamSTTProvider()
         llm = GeminiLLMProvider()
         tts = SarvamTTSProvider()
-        logger.info(f"Initialized LIVE Sarvam STT, Gemini, and Sarvam TTS for session {session.session_id}")
+        logger.info(
+            f"Initialized REAL Sarvam STT, Gemini, and Sarvam TTS for session {session.session_id} "
+            f"(mode={'LIVE' if settings.is_live() else 'REAL_PROVIDER_SIMULATION'})"
+        )
     else:
         stt = MockSpeechToTextProvider()
         llm = MockLLMProvider()
         tts = MockTextToSpeechProvider()
-        logger.info(f"Initialized MOCK STT, LLM, and TTS for session {session.session_id}")
+        reason = "missing credentials" if real_provider_mode else "mock mode default"
+        logger.info(
+            f"Initialized MOCK STT, LLM, and TTS for session {session.session_id} ({reason})"
+        )
 
     def broadcast_to_operator(event_type_str: str, payload: Dict[str, Any]):
         try:

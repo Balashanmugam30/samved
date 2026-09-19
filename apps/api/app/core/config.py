@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     APP_ENV: AppEnv = "development"
     APP_MODE: AppMode = "DEV"
     DEMO_MODE_ENABLED: bool = True
+    REAL_PROVIDER_SIMULATION: bool = False
 
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
@@ -94,6 +95,9 @@ class Settings(BaseSettings):
     def is_live(self) -> bool:
         return self.APP_MODE == "LIVE"
 
+    def is_real_provider_simulation(self) -> bool:
+        return bool(self.REAL_PROVIDER_SIMULATION and not self.is_live())
+
     def has_exotel_credentials(self) -> bool:
         return bool(
             self.EXOTEL_ACCOUNT_SID
@@ -112,6 +116,7 @@ class Settings(BaseSettings):
             "app_env": self.APP_ENV,
             "app_mode": self.APP_MODE,
             "demo_mode_enabled": self.DEMO_MODE_ENABLED,
+            "real_provider_simulation": self.REAL_PROVIDER_SIMULATION,
             "log_level": self.LOG_LEVEL,
             "structured_logging": self.ENABLE_STRUCTURED_JSON_LOGS,
             "has_database": bool(self.DATABASE_URL),

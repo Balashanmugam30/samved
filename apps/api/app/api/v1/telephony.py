@@ -264,14 +264,24 @@ async def telephony_doctor() -> Dict[str, Any]:
     is_public = not ("localhost" in settings.PUBLIC_BASE_URL or "127.0.0.1" in settings.PUBLIC_BASE_URL)
 
     live_ready = is_live and has_exotel and has_sarvam and has_gemini and is_public
-    simulation_ready = True  # Mock providers are always available
+    real_sim_ready = bool(settings.REAL_PROVIDER_SIMULATION and has_sarvam and has_gemini)
+
+    if is_live:
+        provider_execution_mode = "LIVE"
+    elif real_sim_ready:
+        provider_execution_mode = "REAL_PROVIDER_SIMULATION"
+    else:
+        provider_execution_mode = "MOCK"
 
     webhook_base = settings.EXOTEL_WEBHOOK_BASE_URL or f"{settings.PUBLIC_BASE_URL}/v1/telephony"
     stream_base = settings.EXOTEL_STREAM_URL or f"{settings.PUBLIC_WS_BASE_URL}/ws/telephony/exotel"
 
     return {
         "app_mode": settings.APP_MODE,
+        "provider_execution_mode": provider_execution_mode,
+        "real_provider_simulation": settings.REAL_PROVIDER_SIMULATION,
         "telephony_provider": "Exotel",
+        "exotel_enabled": settings.EXOTEL_ENABLED,
         "exotel_credentials_present": has_exotel,
         "live_mode_safe_to_start": live_ready,
         "public_webhook_base_url": webhook_base,
@@ -289,12 +299,13 @@ async def telephony_doctor() -> Dict[str, Any]:
         },
         "pipeline_status": {
             "simulation_pipeline": "READY",
-            "live_voice_pipeline": "READY" if live_ready else "BLOCKED_BY_CREDENTIALS",
+            "real_provider_simulation_pipeline": "READY" if (has_sarvam and has_gemini) else ("MISSING_CREDENTIALS" if settings.REAL_PROVIDER_SIMULATION else "DISABLED"),
+            "live_voice_pipeline": "READY" if live_ready else ("BLOCKED_BY_CREDENTIALS" if is_live else "DISABLED_DEV_MODE"),
         },
         "public_url_configured": is_public,
         "active_calls_count": telephony_session_manager.active_calls_count,
         "audio_pipeline_diagnostics": telephony_session_manager.get_audio_diagnostics(),
-        "note": "In DEV/SIMULATION mode, deterministic mocks execute the complete voice pipeline without paid API keys.",
+        "note": "In DEV mode with REAL_PROVIDER_SIMULATION=true, real Sarvam and Gemini execute within the safe simulation pipeline without PSTN/Exotel.",
     }
 
 
@@ -306,10 +317,14 @@ async def start_simulated_conversation_endpoint(payload: Optional[Dict[str, Any]
     data = payload or {}
     scenario = data.get("scenario", "tamil_help")
     caller_phone = data.get("caller_phone", "+919876543210")
+    sync = bool(data.get("sync", False) or data.get("await_completion", False))
+    custom_text = data.get("text") or data.get("custom_text")
 
     result = await run_simulated_conversation(
         scenario_key=scenario,
         caller_number=caller_phone,
+        sync=sync,
+        custom_text=custom_text,
     )
     return result
 

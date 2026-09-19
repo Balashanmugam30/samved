@@ -68,12 +68,12 @@ class GeminiLLMProvider:
     def __init__(
         self,
         api_key: Any = _UNSET,
-        model: str = "gemini-2.5-flash",
+        model: Optional[str] = None,
         timeout_seconds: float = 4.0,
     ):
         settings = get_settings()
         self.api_key = settings.GEMINI_API_KEY if api_key is _UNSET else (api_key or "")
-        self.model = model
+        self.model = model or getattr(settings, "GEMINI_MODEL", "gemini-3.6-flash")
         self.timeout_seconds = timeout_seconds
         self.endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
 

@@ -62,6 +62,7 @@ class Settings(BaseSettings):
 
     # LLM Providers (Phase 2+)
     GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     OPENAI_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
 

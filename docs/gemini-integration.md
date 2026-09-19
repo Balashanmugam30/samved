@@ -1,7 +1,7 @@
 # Google Gemini Conversational Intelligence Integration
 
 ## 1. Overview
-SAMVED uses **Google Gemini** (`gemini-2.5-flash`) as its real-time conversational reasoning engine. Gemini evaluates incoming victim transcripts, maintains dialogue context, flags immediate physical safety concerns, and crafts short, empathetic spoken responses tailored for telephone delivery.
+SAMVED uses **Google Gemini** (`gemini-3.6-flash`) as its real-time conversational reasoning engine, configurable via `GEMINI_MODEL=gemini-3.6-flash`. Gemini evaluates incoming victim transcripts, maintains dialogue context, flags immediate physical safety concerns, and crafts short, empathetic spoken responses tailored for telephone delivery.
 
 ---
 
@@ -44,7 +44,7 @@ To provide a natural telephone conversation, SAMVED targets an end-to-end turn t
 | Stage | Target Budget | Monitored Event |
 | :--- | :--- | :--- |
 | STT Final Transcript | $\le 200\text{ ms}$ | `TRANSCRIPT_FINAL` |
-| Gemini 2.5 Flash Reasoning | $\le 400\text{ ms}$ | `AI_RESPONSE_STARTED` |
+| Gemini 3.6 Flash Reasoning | $\le 400\text{ ms}$ | `AI_RESPONSE_STARTED` |
 | TTS Audio First Frame | $\le 200\text{ ms}$ | `TTS_STARTED` |
 | **Total Round-Trip Turn** | **$\le 800\text{ ms}$** | `TURN_LATENCY` |
 

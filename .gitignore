@@ -52,3 +52,6 @@ playwright/.cache/
 .cache/
 tmp/
 scratch/
+
+.vercel
+.env*

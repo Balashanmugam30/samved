@@ -263,7 +263,7 @@ pnpm dev:web
 | **Telephony Simulator & Ingress Test Harness** | ✅ | Phase 1 |
 | **Telephony Diagnostics & Live Operator View (`/calls`)** | ✅ | Phase 1 |
 | **Sarvam Realtime Streaming STT (`saaras:v3`)** | ✅ | Phase 2 |
-| **Gemini Conversational Intelligence (`gemini-2.5-flash`)** | ✅ | Phase 2 |
+| **Gemini Conversational Intelligence (`gemini-3.6-flash`)** | ✅ | Phase 2 |
 | **Sarvam Bulbul TTS (`bulbul:v3`) & 8kHz WAV Stripping** | ✅ | Phase 2 |
 | **Turn Coordination & Orchestration State Machine** | ✅ | Phase 2 |
 | **Barge-In / Caller Interruption Engine** | ✅ | Phase 2 |

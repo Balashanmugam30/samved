@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from app.prompts.loader import load_system_prompt
 from app.providers.gemini import GeminiLLMProvider, sanitize_voice_response
 from app.providers.mocks import MockLLMProvider
@@ -49,3 +49,19 @@ async def test_gemini_fallback_when_unconfigured():
     )
     assert fallback.language == "ta-IN"
     assert "வணக்கம்" in fallback.response_text
+
+
+def test_gemini_model_configuration_defaults_and_injection():
+    # 1. Default model must be gemini-3.6-flash
+    gemini_default = GeminiLLMProvider(api_key=None)
+    assert gemini_default.model == "gemini-3.6-flash"
+    assert gemini_default.endpoint == (
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
+    )
+
+    # 2. Explicit model injection must be respected
+    gemini_custom = GeminiLLMProvider(api_key=None, model="custom-test-model")
+    assert gemini_custom.model == "custom-test-model"
+    assert gemini_custom.endpoint == (
+        "https://generativelanguage.googleapis.com/v1beta/models/custom-test-model:generateContent"
+    )

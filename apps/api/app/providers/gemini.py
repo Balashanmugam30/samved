@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+import random
 import re
 from typing import Any, Dict, List, Optional
 import httpx
@@ -10,6 +12,10 @@ from app.schemas.conversation import ConversationalResponse
 from app.schemas.languages import LanguageCode
 
 logger = logging.getLogger("samved.providers.gemini")
+
+TRANSIENT_STATUS_CODES = {408, 429, 503}
+MAX_RETRIES = 3
+INITIAL_BACKOFF_SECONDS = 1.0
 
 FALLBACK_RESPONSES: Dict[str, ConversationalResponse] = {
     "ta-IN": ConversationalResponse(
@@ -138,37 +144,65 @@ class GeminiLLMProvider:
             },
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                resp = await client.post(
-                    f"{self.endpoint}?key={self.api_key}",
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts:
-                            raw_json_str = parts[0].get("text", "")
-                            parsed = json.loads(raw_json_str)
-                            response_text = sanitize_voice_response(parsed.get("response_text", ""))
-                            return ConversationalResponse(
-                                response_text=response_text,
-                                detected_intent=parsed.get("detected_intent", "GENERAL_INQUIRY"),
-                                conversation_state=parsed.get("conversation_state", "ENGAGED"),
-                                next_action=parsed.get("next_action", "CONTINUE"),
-                                language=parsed.get("language", language),
-                                confidence=float(parsed.get("confidence", 0.9)),
-                                safety_flag=bool(parsed.get("safety_flag", False)),
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                    resp = await client.post(
+                        f"{self.endpoint}?key={self.api_key}",
+                        json=payload,
+                        headers={"Content-Type": "application/json"},
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts:
+                                raw_json_str = parts[0].get("text", "")
+                                parsed = json.loads(raw_json_str)
+                                response_text = sanitize_voice_response(parsed.get("response_text", ""))
+                                return ConversationalResponse(
+                                    response_text=response_text,
+                                    detected_intent=parsed.get("detected_intent", "GENERAL_INQUIRY"),
+                                    conversation_state=parsed.get("conversation_state", "ENGAGED"),
+                                    next_action=parsed.get("next_action", "CONTINUE"),
+                                    language=parsed.get("language", language),
+                                    confidence=float(parsed.get("confidence", 0.9)),
+                                    safety_flag=bool(parsed.get("safety_flag", False)),
+                                )
+                    elif resp.status_code in TRANSIENT_STATUS_CODES:
+                        if attempt < MAX_RETRIES:
+                            delay = (INITIAL_BACKOFF_SECONDS * (2 ** (attempt - 1))) + random.uniform(0.05, 0.25)
+                            logger.warning(
+                                f"Gemini API returned transient status {resp.status_code} on attempt {attempt}/{MAX_RETRIES}. "
+                                f"Retrying in {delay:.2f}s..."
                             )
+                            await asyncio.sleep(delay)
+                            continue
+                        else:
+                            logger.error(
+                                f"Gemini API returned transient status {resp.status_code} on final attempt {attempt}/{MAX_RETRIES}: {resp.text}"
+                            )
+                            break
+                    else:
+                        # Non-transient status code (400, 401, 403, 404, etc.): do not retry
+                        logger.error(f"Gemini API returned non-retriable status {resp.status_code}: {resp.text}")
+                        break
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.TransportError) as e:
+                if attempt < MAX_RETRIES:
+                    delay = (INITIAL_BACKOFF_SECONDS * (2 ** (attempt - 1))) + random.uniform(0.05, 0.25)
+                    logger.warning(
+                        f"Gemini API transport error '{type(e).__name__}' on attempt {attempt}/{MAX_RETRIES}. "
+                        f"Retrying in {delay:.2f}s..."
+                    )
+                    await asyncio.sleep(delay)
+                    continue
                 else:
-                    logger.error(f"Gemini API returned status {resp.status_code}: {resp.text}")
-        except httpx.TimeoutException:
-            logger.warning("Gemini API request timed out; returning fallback.")
-        except Exception as e:
-            logger.error(f"Error calling Gemini API: {e}")
+                    logger.error(f"Gemini API transport error on final attempt {attempt}/{MAX_RETRIES}: {e}")
+                    break
+            except Exception as e:
+                logger.error(f"Unexpected error calling Gemini API: {e}")
+                break
 
         return fallback
 

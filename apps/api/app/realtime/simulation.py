@@ -213,10 +213,17 @@ async def run_simulated_conversation(
                         await orchestrator.handle_transcript_event(final_event)
 
                 # 3. Wait for AI response turn
-                await asyncio.sleep(turn.get("delay_after_ms", 500) / 1000.0)
+                await asyncio.sleep(0.1)
+                if orchestrator and orchestrator._current_speech_task:
+                    try:
+                        await asyncio.wait_for(asyncio.shield(orchestrator._current_speech_task), timeout=15.0)
+                    except Exception as e:
+                        logger.warning(f"Error waiting for AI turn task: {e}")
+                else:
+                    await asyncio.sleep(turn.get("delay_after_ms", 500) / 1000.0)
 
             # Let last response finish playing
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
 
             # Collect execution summary
             last_assistant_text = ""
@@ -238,8 +245,8 @@ async def run_simulated_conversation(
             outbound_bytes = 0
             outbound_frames = 0
             if session:
-                outbound_bytes = session.audio_telemetry.outbound_pcm_bytes_sent
-                outbound_frames = session.audio_telemetry.outbound_frames_sent_to_exotel
+                outbound_bytes = session.audio_telemetry.tts_total_pcm_bytes or session.audio_telemetry.outbound_pcm_bytes_sent
+                outbound_frames = session.outbound_queue.qsize() or session.audio_telemetry.outbound_frames_sent_to_exotel
 
             exec_summary.update({
                 "status": "simulation_completed",

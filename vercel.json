@@ -20,7 +20,11 @@
       "destination": { "service": "api" }
     },
     {
-      "source": "/health:match*",
+      "source": "/health",
+      "destination": { "service": "api" }
+    },
+    {
+      "source": "/health/:match*",
       "destination": { "service": "api" }
     },
     {

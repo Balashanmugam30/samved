@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Security
     JWT_SECRET: str = "insecure-dev-secret-change-in-production-min-32-chars"
-    CORS_ORIGINS: List[str] = [
+    CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     @classmethod
     def assemble_cors_origins(cls, v):
         if isinstance(v, str):
+            v_stripped = v.strip()
+            if v_stripped.startswith("[") and v_stripped.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(v_stripped)
+                    if isinstance(parsed, list):
+                        return [str(i).strip() for i in parsed if str(i).strip()]
+                except Exception:
+                    pass
             return [i.strip() for i in v.split(",") if i.strip()]
         return v
 
